@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>POS System</title>
+    <link href="./styles/output.css" rel="stylesheet" />
+  </head>
+  <body class="bg-gray-100 text-gray-900 font-sans">
+    <div class="flex h-screen">
+      <!-- Sidebar -->
+      <div class="w-64 bg-white shadow-lg p-4">
+        <h2 class="text-xl font-bold mb-4">POS Menu</h2>
+        <ul class="space-y-2">
+          <li>
+            <button class="nav-btn w-full text-left hover:bg-gray-200 p-2 rounded">Products</button>
+          </li>
+          <li>
+            <button class="nav-btn w-full text-left hover:bg-gray-200 p-2 rounded">Sales</button>
+          </li>
+          <li>
+            <button class="nav-btn w-full text-left hover:bg-gray-200 p-2 rounded">Reports</button>
+          </li>
+        </ul>
+      </div>
+
+      <!-- Main Content -->
+      <div class="flex-1 p-6">
+        <h1 class="text-2xl font-semibold mb-4">Welcome to POS</h1>
+        <div id="app">
+          <!-- Dynamic content loads here -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Add Product Modal (Hidden by default) -->
+    <div id="productModal" class="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center hidden">
+      <div class="bg-white rounded-lg p-6 w-96 shadow-lg">
+        <h3 class="text-lg font-bold mb-4">Add New Product</h3>
+        <div class="space-y-2">
+          <input id="productName" type="text" placeholder="Product Name" class="w-full p-2 border rounded" />
+          <input id="productPrice" type="number" placeholder="Price" class="w-full p-2 border rounded" />
+          <input id="productStock" type="number" placeholder="Stock" class="w-full p-2 border rounded" />
+        </div>
+        <div class="flex justify-end gap-2 mt-4">
+          <button id="cancelModalBtn" class="px-4 py-2 rounded bg-gray-300 hover:bg-gray-400">Cancel</button>
+          <button id="saveProductBtn" class="px-4 py-2 rounded bg-blue-600 hover:bg-blue-700 text-white">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="renderer.js"></script>
+  </body>
+</html>

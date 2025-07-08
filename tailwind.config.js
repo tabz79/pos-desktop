@@ -1,0 +1,31 @@
+module.exports = {
+  content: ["./index.html", "./renderer.js"],
+  safelist: [
+    'flex',
+    'h-screen',
+    'w-64',
+    'bg-white',
+    'shadow-lg',
+    'p-4',
+    'text-xl',
+    'font-bold',
+    'mb-4',
+    'space-y-2',
+    'w-full',
+    'text-left',
+    'hover:bg-gray-200',
+    'p-2',
+    'rounded',
+    'flex-1',
+    'text-2xl',
+    'font-semibold',
+    'mt-4',
+    'bg-gray-100',
+    'text-gray-900',
+    'font-sans'
+  ],
+  theme: {
+    extend: {},
+  },
+  plugins: [],
+}
