@@ -6,48 +6,48 @@
     <link href="./styles/output.css" rel="stylesheet" />
   </head>
   <body class="bg-gray-100 text-gray-900 font-sans">
-    <div class="flex h-screen">
-      <!-- Sidebar -->
-      <div class="w-64 bg-white shadow-lg p-4">
+    <div class="flex h-screen overflow-hidden">
+      <!-- Sidebar (fixed height, scrollable independently) -->
+      <div class="w-64 bg-white shadow-lg p-4 overflow-y-auto">
         <h2 class="text-xl font-bold mb-4">POS Menu</h2>
         <ul class="space-y-2">
-          <li>
-            <button class="nav-btn w-full text-left hover:bg-gray-200 p-2 rounded">Products</button>
-          </li>
-          <li>
-            <button class="nav-btn w-full text-left hover:bg-gray-200 p-2 rounded">Sales</button>
-          </li>
-          <li>
-            <button class="nav-btn w-full text-left hover:bg-gray-200 p-2 rounded">Reports</button>
-          </li>
+          <li><button class="nav-btn w-full text-left hover:bg-gray-200 p-2 rounded">Products</button></li>
+          <li><button class="nav-btn w-full text-left hover:bg-gray-200 p-2 rounded">Sales</button></li>
+          <li><button class="nav-btn w-full text-left hover:bg-gray-200 p-2 rounded">Reports</button></li>
+          <li><button class="nav-btn w-full text-left hover:bg-gray-200 p-2 rounded">Settings</button></li>
         </ul>
       </div>
 
-      <!-- Main Content -->
-      <div class="flex-1 p-6">
-        <h1 class="text-2xl font-semibold mb-4">Welcome to POS</h1>
+      <!-- Main Content Area (scrolls independently) -->
+      <div class="flex-1 overflow-y-auto p-6 bg-gray-50">
         <div id="app">
-          <!-- Dynamic content loads here -->
+          <!-- Will be filled dynamically by renderer.js -->
         </div>
       </div>
     </div>
 
-    <!-- Add Product Modal (Hidden by default) -->
-    <div id="productModal" class="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center hidden">
-      <div class="bg-white rounded-lg p-6 w-96 shadow-lg">
-        <h3 class="text-lg font-bold mb-4">Add New Product</h3>
-        <div class="space-y-2">
-          <input id="productName" type="text" placeholder="Product Name" class="w-full p-2 border rounded" />
-          <input id="productPrice" type="number" placeholder="Price" class="w-full p-2 border rounded" />
-          <input id="productStock" type="number" placeholder="Stock" class="w-full p-2 border rounded" />
-        </div>
-        <div class="flex justify-end gap-2 mt-4">
-          <button id="cancelModalBtn" class="px-4 py-2 rounded bg-gray-300 hover:bg-gray-400">Cancel</button>
-          <button id="saveProductBtn" class="px-4 py-2 rounded bg-blue-600 hover:bg-blue-700 text-white">Save</button>
+    <!-- ✅ Toast Notification -->
+    <div id="toast" class="fixed bottom-4 right-4 bg-green-600 text-white px-4 py-2 rounded shadow hidden z-50"></div>
+
+    <!-- ✅ Invoice Modal -->
+    <div id="invoice-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50 print:block print:bg-white print:inset-0 print:static">
+      <div class="bg-white rounded-lg p-6 w-[30rem] shadow-lg print:shadow-none print:w-full print:max-w-[600px] print:mx-auto">
+        <div id="invoice-header" class="mb-4 text-center border-b pb-2"></div>
+        <p id="invoice-meta" class="text-xs text-gray-500 mt-1 text-right"></p>
+        <div id="invoice-items" class="space-y-2 mb-4 text-sm max-h-64 overflow-y-auto print:overflow-visible print:max-h-full"></div>
+        <p id="invoice-total" class="text-right font-semibold text-lg mb-4"></p>
+        <div class="flex flex-wrap justify-end items-center gap-2 print:hidden">
+          <select id="print-mode" class="border rounded px-2 py-1 text-sm">
+            <option value="thermal">🧾 Thermal (58mm)</option>
+            <option value="a4">🖨️ A4 Full Page</option>
+          </select>
+          <button onclick="window.print()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded">🖨️ Print</button>
+          <button id="close-invoice-btn" class="px-4 py-2 bg-gray-300 hover:bg-gray-400 rounded">Close</button>
         </div>
       </div>
     </div>
 
+    <!-- ✅ Renderer Script (Your latest working one) -->
     <script src="renderer.js"></script>
   </body>
 </html>
