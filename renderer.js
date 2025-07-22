@@ -52,21 +52,12 @@ document.addEventListener("DOMContentLoaded", () => {
         </div>
       </div>
     `,
-    Sales: `
-      <div>
-        <h2 class="text-xl font-bold mb-4">Sales</h2>
-        <div id="salesProductList" class="grid grid-cols-2 gap-4 mb-6"></div>
-        <div>
-          <h3 class="text-lg font-semibold mb-2">🧾 Cart</h3>
-          <div id="cartList" class="bg-white p-4 rounded shadow border mb-4">
-            <p class="text-gray-500">Cart is empty.</p>
-          </div>
-          <button id="checkoutBtn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2 px-4 rounded disabled:opacity-50" disabled>
-            ✅ Checkout & Save Sale
-          </button>
-        </div>
-      </div>
-    `,
+Sales: `
+  <div>
+    <h2 class="text-xl font-bold mb-4">Sales</h2>
+    <div id="salesProductList" class="grid grid-cols-2 gap-4 mb-6"></div>
+  </div>
+`,
     Reports: `
       <div>
         <h2 class="text-xl font-bold mb-2">Reports</h2>
@@ -254,50 +245,56 @@ function renderView(viewName) {
   }
 
   if (viewName === "Sales") {
+	  // Pressing Enter in any input should trigger blur (and thereby onchange)
+document.getElementById("cartOverlay")?.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && e.target.matches("input")) {
+    e.preventDefault();
+    e.target.blur(); // Triggers onchange
+  }
+});
+document.getElementById("cartOverlay")?.addEventListener("input", (e) => {
+  const row = e.target.closest("tr[data-index]");
+  if (!row) return;
+
+  const inputs = row.querySelectorAll("input[type='number']");
+  const [rateInput, qtyInput, gstInput, discountInput] = [...inputs];
+
+  const rate = parseFloat(rateInput?.value?.trim() || "0") || 0;
+  const qty = parseFloat(qtyInput?.value?.trim() || "0") || 0;
+  const gst = parseFloat(gstInput?.value?.trim() || "0") || 0;
+  const discount = parseFloat(discountInput?.value?.trim() || "0") || 0;
+
+  const gross = rate * qty; // MRP x Qty stays fixed
+  const finalAmount = gross - discount; // Apply discount on MRP
+
+  const baseAmount = +(finalAmount / (1 + gst / 100)).toFixed(2); // Inclusive tax math
+  const taxAmount = +(finalAmount - baseAmount).toFixed(2);
+
+  const amtCell = row.querySelector("td:last-child");
+  if (amtCell) amtCell.textContent = `₹${finalAmount.toFixed(2)}`;
+
+  const index = parseInt(row.dataset.index);
+  if (!isNaN(index) && cart[index]) {
+    cart[index].price = rate;
+    cart[index].quantity = qty;
+    cart[index].gst_percent = gst;
+    cart[index].discount = discount;
+  }
+});
     salesProductList = document.getElementById("salesProductList");
     renderSalesProducts();
 
-    const checkoutBtn = document.getElementById("checkoutBtn");
-    if (checkoutBtn) {
-      checkoutBtn.addEventListener("click", async () => {
-        if (!Array.isArray(cart) || cart.length === 0) {
-          showToast("⚠️ Cart is empty.");
-          return;
-        }
-
-        const isCartValid = cart.every(item =>
-          item.id && item.name && typeof item.price === "number" && item.quantity > 0
-        );
-
-        if (!isCartValid) {
-          showToast("❌ Invalid cart data. Please refresh.");
-          return;
-        }
-
-// 🔄 Enrich cart with HSN & GST info before sending and showing invoice
-const enrichedCart = cart.map(item => {
-  const product = allProducts.find(p => p.id === item.id) || {};
-  return {
-    ...item,
-    hsn_code: product.hsn_code || null,
-    gst_percent: product.gst_percent || 0
-  };
-});
-
-lastSale = enrichedCart;
-const result = await window.api.saveSale(enrichedCart);
-
-if (result.success) {
-  showToast("✅ Sale recorded and cart cleared!");
-  cart.length = 0;
-  updateCartUI();
-  await renderSalesProducts();
-  showInvoice(lastSale); // ✅ Now uses enriched cart
-} else {
-          showToast(`❌ Failed to save sale: ${result.message || "Please try again."}`);
-        }
-      });
-    }
+    const checkoutBtn = document.querySelector("#fixed-cart-ui #checkoutBtn");
+if (checkoutBtn) {
+  // 🛒 Step 2C — Show Cart Overlay on button click
+  checkoutBtn.addEventListener("click", () => {
+    const cartOverlay = document.getElementById("cartOverlay");
+    if (cartOverlay) {
+  cartOverlay.classList.remove("hidden");
+  renderCartOverlay();
+}
+  });
+}
   }
 
 if (viewName === "Settings") {
@@ -369,8 +366,8 @@ if (viewName === "Settings") {
   }
 
 function updateCartUI() {
-  const cartList = document.getElementById("cartList");
-  const checkoutBtn = document.getElementById("checkoutBtn");
+  const cartList = document.querySelector("#fixed-cart-ui #cartList");
+  const checkoutBtn = document.querySelector("#fixed-cart-ui #checkoutBtn");
   if (!cartList) return;
 
   if (cart.length === 0) {
@@ -382,7 +379,7 @@ function updateCartUI() {
 let subtotal = 0;
 let totalGST = 0;
 
-const itemsHTML = cart.map((item, index) => {
+const itemsHTML = [...cart].reverse().map((item, index) => {
   const product = allProducts.find(p => p.id === item.id);
   if (!product) return "";
 
@@ -438,7 +435,54 @@ const totalHTML = `
 `;
 
 cartList.innerHTML = itemsHTML + totalHTML;
-  if (checkoutBtn) checkoutBtn.disabled = false;
+
+// 👇 Ensure recently added item is always visible (scroll to top)
+cartList.scrollTop = 0;
+
+if (checkoutBtn) checkoutBtn.disabled = false;
+
+// 👇 Adjust sales content scroll space to cart height
+const cartHeight = document.getElementById("fixed-cart-ui")?.offsetHeight || 0;
+const mainContent = document.getElementById("main-scrollable-content");
+if (mainContent) {
+  mainContent.style.paddingBottom = cartHeight + "px";
+}
+}
+function renderCartOverlay() {
+  const overlayBody = document.getElementById("cartOverlayBody");
+  if (!overlayBody) return;
+
+  overlayBody.innerHTML = [...cart].reverse().map((item, index) => {
+    const product = allProducts.find(p => p.id === item.id) || {};
+    const gst = item.gst_percent ?? product.gst_percent ?? 0;
+    const discount = item.discount ?? 0;
+
+    return `
+      <tr class="border-b" data-index="${cart.length - 1 - index}">
+        <td class="p-1 text-xs text-center">${index + 1}</td>
+        <td class="p-1 text-xs">${item.name}</td>
+        <td class="p-1 text-xs">
+          <input type="number" value="${item.price}" min="0" class="w-16 text-right border px-1 py-0.5 text-xs rounded" 
+            onchange="updateCartItem(${item.id}, 'price', this.value)" />
+        </td>
+        <td class="p-1 text-xs">
+          <input type="number" value="${item.quantity}" min="1" max="${product.stock}" class="w-12 text-center border px-1 py-0.5 text-xs rounded"
+            onchange="updateCartItem(${item.id}, 'quantity', this.value)" />
+        </td>
+        <td class="p-1 text-xs">
+          <input type="number" value="${gst}" min="0" max="28" class="w-12 text-center border px-1 py-0.5 text-xs rounded"
+            onchange="updateCartItem(${item.id}, 'gst_percent', this.value)" />
+        </td>
+        <td class="p-1 text-xs">
+          <input type="number" value="${discount}" min="0" class="w-14 text-right border px-1 py-0.5 text-xs rounded"
+            onchange="updateCartItem(${item.id}, 'discount', this.value)" />
+        </td>
+        <td class="p-1 text-xs text-right font-semibold">
+          ₹${((item.price * item.quantity) - discount).toFixed(2)}
+        </td>
+      </tr>
+    `;
+  }).join("");
 }
 
   window.increaseQty = function (id) {
@@ -466,6 +510,32 @@ window.decreaseQty = function (id) {
 };
 
 window.removeItem = function (id) {
+	// ✏️ Update cart item's specific property (used by editable overlay)
+window.updateCartItem = function (id, field, value) {
+  const item = cart.find(p => p.id === id);
+  if (!item) return;
+
+  if (field === 'price' || field === 'gst_percent' || field === 'discount') {
+    const num = parseFloat(value);
+    if (isNaN(num) || num < 0) {
+      showToast("⚠️ Invalid number.");
+      return;
+    }
+    item[field] = num;
+  } else if (field === 'quantity') {
+    const qty = parseInt(value);
+    const stockProduct = allProducts.find(p => p.id === id);
+    if (!stockProduct) return;
+
+    if (isNaN(qty) || qty < 1 || qty > stockProduct.stock) {
+      showToast("⚠️ Quantity out of range.");
+      return;
+    }
+    item.quantity = qty;
+  }
+
+  updateCartUI(); // reflect changes in both overlay and fixed cart UI
+};
   const index = cart.findIndex(p => p.id === id);
   if (index !== -1) {
     const removed = cart.splice(index, 1);
@@ -596,13 +666,13 @@ let tableHTML = `
   <table class="w-full text-xs border-collapse">
     <thead>
       <tr class="border-b border-dotted border-gray-400 text-left">
-        <th class="p-1 font-normal">S.No</th>
-        <th class="p-1 font-normal">Item</th>
-        ${showTaxable ? `<th class="p-1 font-normal text-right">GST%</th>` : ""}
-        <th class="p-1 font-normal text-right">Rate</th>
-        <th class="p-1 font-normal text-right">Qty</th>
-        <th class="p-1 font-normal text-right">Disc.</th>
-        <th class="p-1 font-normal text-right">Amount</th>
+        <th class="p-1">S.No</th>
+        <th class="p-1">Item</th>
+        ${showTaxable ? `<th class="p-1 text-right">GST%</th>` : ""}
+        <th class="p-1 text-right">Rate</th>
+        <th class="p-1 text-right">Qty</th>
+        <th class="p-1 text-right">Disc.</th>
+        <th class="p-1 text-right">Amount</th>
       </tr>
     </thead>
     <tbody>
@@ -611,7 +681,7 @@ let tableHTML = `
 items.forEach((item, index) => {
   const qty = item.quantity;
   const price = item.price;
-  const gstRate = item.gst_percent ?? 0;
+  const gstRate = item.gst_percent || 0;
   const hsn = item.hsn_code || "N/A";
   const discount = item.discount ?? 0;
 

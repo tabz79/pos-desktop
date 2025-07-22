@@ -5,9 +5,9 @@
     <title>POS System</title>
     <link href="./styles/output.css" rel="stylesheet" />
   </head>
-  <body class="bg-gray-100 text-gray-900 font-sans">
-    <div class="flex h-screen overflow-hidden">
-      <!-- Sidebar (fixed height, scrollable independently) -->
+  <body class="bg-gray-100 text-gray-900 font-sans h-screen overflow-hidden">
+    <div class="flex h-full">
+      <!-- Sidebar -->
       <div class="w-64 bg-white shadow-lg p-4 overflow-y-auto">
         <h2 class="text-xl font-bold mb-4">POS Menu</h2>
         <ul class="space-y-2">
@@ -18,18 +18,124 @@
         </ul>
       </div>
 
-      <!-- Main Content Area (scrolls independently) -->
-      <div class="flex-1 overflow-y-auto p-6 bg-gray-50">
-        <div id="app">
-          <!-- Will be filled dynamically by renderer.js -->
+      <!-- Main content wrapper -->
+      <div class="flex-1 flex flex-col relative">
+        <!-- Scrollable main area -->
+        <div id="main-scrollable-content" class="flex-1 overflow-y-auto p-6 pb-[7rem] bg-gray-50">
+          <div id="app">
+            <!-- Product content dynamically injected here -->
+          </div>
         </div>
-      </div>
-    </div>
 
-    <!-- ✅ Toast Notification -->
+        <!-- Fixed cart at bottom -->
+        <div id="fixed-cart-ui" class="fixed bottom-0 left-64 right-0 bg-white shadow-md border-t z-50">
+          <div id="cartList" class="max-h-60 overflow-y-auto p-4">
+            <!-- Cart content will be injected here by renderer.js -->
+          </div>
+          <div class="border-t p-4 text-right">
+            <button id="checkoutBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded disabled:opacity-50" disabled>
+              🛒 Cart
+            </button>
+          </div>
+        </div>
+
+        <!-- 🔥 Fullscreen Editable Invoice UI -->
+        <div id="invoiceReviewView" class="hidden absolute inset-0 bg-white p-6 overflow-auto z-40">
+          <div class="max-w-4xl mx-auto bg-white shadow-lg rounded p-4">
+            <h2 class="text-xl font-bold mb-4">🧾 Review & Finalize Invoice</h2>
+
+            <div id="editable-invoice-cart">
+              <!-- JS will render editable invoice here -->
+            </div>
+
+            <!-- Customer + Invoice Info -->
+            <div class="grid grid-cols-2 gap-4 mt-6 text-sm">
+              <div>
+                <label class="block font-medium">Customer Name</label>
+                <input id="reviewCustomerName" type="text" placeholder="Optional" class="w-full border rounded px-2 py-1" />
+              </div>
+              <div>
+                <label class="block font-medium">Phone Number</label>
+                <input id="reviewCustomerPhone" type="text" placeholder="Optional" class="w-full border rounded px-2 py-1" />
+              </div>
+              <div>
+                <label class="block font-medium">Customer GSTIN</label>
+                <input id="reviewCustomerGSTIN" type="text" placeholder="Optional" class="w-full border rounded px-2 py-1" />
+              </div>
+              <div>
+                <label class="block font-medium">Invoice No.</label>
+                <input id="reviewInvoiceNo" type="text" class="w-full border rounded px-2 py-1" />
+              </div>
+            </div>
+
+            <!-- Footer Actions -->
+            <div class="flex justify-between items-center mt-6">
+              <button id="cancelReviewBtn" class="px-4 py-2 bg-gray-300 hover:bg-gray-400 rounded">← Back</button>
+              <button id="finalizeSaleBtn" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded">💾 Finalize Sale</button>
+            </div>
+          </div>
+        </div>
+        <!-- End Review View -->
+
+        <!-- 🛒 Cart Overlay (Step 2D Fullscreen + Metadata + Live Calc) -->
+        <div id="cartOverlay" class="hidden fixed inset-0 bg-white z-50 overflow-y-auto p-6">
+          <div class="w-full bg-white rounded shadow p-4">
+            <div class="flex justify-between items-center mb-4">
+              <h2 class="text-xl font-bold">🛒 Finalize Cart</h2>
+              <button onclick="document.getElementById('cartOverlay').classList.add('hidden')" class="text-gray-500 hover:text-black text-xl font-bold">×</button>
+            </div>
+            <table class="w-full text-sm table-auto border">
+              <thead>
+                <tr class="bg-gray-100 border-b">
+                  <th class="p-2">S.No</th>
+                  <th class="p-2">Item</th>
+                  <th class="p-2">Rate</th>
+                  <th class="p-2">Qty</th>
+                  <th class="p-2">GST%</th>
+                  <th class="p-2">Discount</th>
+                  <th class="p-2">Amount</th>
+                </tr>
+              </thead>
+              <tbody id="cartOverlayBody">
+                <!-- Rendered via renderCartOverlay() -->
+              </tbody>
+            </table>
+
+            <!-- Customer Metadata -->
+            <div class="grid grid-cols-2 gap-4 mt-6 text-sm">
+              <div>
+                <label class="block font-medium">Customer Name</label>
+                <input type="text" id="custName" placeholder="Optional" class="w-full border rounded px-2 py-1" />
+              </div>
+              <div>
+                <label class="block font-medium">Phone Number</label>
+                <input type="text" id="custPhone" placeholder="Optional" class="w-full border rounded px-2 py-1" />
+              </div>
+              <div>
+                <label class="block font-medium">Customer GSTIN</label>
+                <input type="text" id="custGSTIN" placeholder="Optional" class="w-full border rounded px-2 py-1" />
+              </div>
+              <div>
+                <label class="block font-medium">Invoice No.</label>
+                <input type="text" id="invoiceNo" class="w-full border rounded px-2 py-1" />
+              </div>
+            </div>
+
+            <div class="text-right mt-6">
+              <button id="finalizeSaleBtn" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded">
+                Checkout
+              </button>
+            </div>
+          </div>
+        </div>
+
+      </div> <!-- closes .flex-1.flex.flex-col -->
+    </div> <!-- closes .flex.h-full -->
+
+    <!-- Toast -->
     <div id="toast" class="fixed bottom-4 right-4 bg-green-600 text-white px-4 py-2 rounded shadow hidden z-50"></div>
 
-    <!-- ✅ Invoice Modal -->
+    <!-- Invoice Modal -->
     <div id="invoice-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50 print:block print:bg-white print:inset-0 print:static">
       <div class="bg-white rounded-lg p-6 w-[30rem] shadow-lg print:shadow-none print:w-full print:max-w-[600px] print:mx-auto">
         <div id="invoice-header" class="mb-4 text-center border-b pb-2"></div>
@@ -47,7 +153,26 @@
       </div>
     </div>
 
-    <!-- ✅ Renderer Script (Your latest working one) -->
+    <!-- Renderer -->
     <script src="renderer.js"></script>
+    <script>
+      // Live Calculation Listener
+      document.addEventListener("input", (e) => {
+        const row = e.target.closest("tr");
+        if (!row) return;
+
+        const rate = parseFloat(row.querySelector(".edit-rate")?.value) || 0;
+        const qty = parseFloat(row.querySelector(".edit-qty")?.value) || 0;
+        const gst = parseFloat(row.querySelector(".edit-gst")?.value) || 0;
+        const discount = parseFloat(row.querySelector(".edit-discount")?.value) || 0;
+
+        const base = rate * qty;
+        const tax = (base * gst) / 100;
+        const total = base + tax - discount;
+
+        const amtCell = row.querySelector(".amount-cell");
+        if (amtCell) amtCell.textContent = `₹${total.toFixed(2)}`;
+      });
+    </script>
   </body>
 </html>
