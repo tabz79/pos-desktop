@@ -207,9 +207,22 @@ function updateProduct(product) {
 }
 
 // ✅ Save a full sale (sale + items with GST extracted from MRP)
-function saveSale(items) {
+function saveSale(saleData) {
   try {
-    const timestamp = new Date().toISOString();
+    const {
+      invoice_no,
+      date,
+      payment_method,
+      customer_name,
+      customer_phone,
+      customer_gstin,
+      items
+    } = saleData;
+
+    if (!Array.isArray(items) || items.length === 0) {
+      throw new Error("Sale must include items");
+    }
+
     const enrichedItems = [];
 
     for (const i of items) {
@@ -217,9 +230,7 @@ function saveSale(items) {
       const qty = i.quantity;
       const gstRate = i.gst_percent ?? 0;
 
-      const pricePerUnit = price;
-      const totalMRP = pricePerUnit * qty;
-
+      const totalMRP = price * qty;
       const divisor = 1 + gstRate / 100;
       const taxableValue = +(totalMRP / divisor).toFixed(2);
       const gstAmount = +(totalMRP - taxableValue).toFixed(2);
@@ -236,8 +247,39 @@ function saveSale(items) {
     }
 
     const total = enrichedItems.reduce((acc, i) => acc + i.taxable_value + i.gst_amount, 0);
-    const insertSale = db.prepare(`INSERT INTO sales (total, timestamp) VALUES (?, ?)`);
-    const saleInfo = insertSale.run(total, timestamp);
+
+    // 🧠 Auto-add columns to sales if not present
+    const salesCols = db.prepare("PRAGMA table_info(sales)").all().map(c => c.name);
+    const neededCols = [
+      { name: "invoice_no", type: "TEXT" },
+      { name: "payment_method", type: "TEXT" },
+      { name: "customer_name", type: "TEXT" },
+      { name: "customer_phone", type: "TEXT" },
+      { name: "customer_gstin", type: "TEXT" }
+    ];
+    for (const col of neededCols) {
+      if (!salesCols.includes(col.name)) {
+        db.prepare(`ALTER TABLE sales ADD COLUMN ${col.name} ${col.type}`).run();
+        console.log(`✅ Added column to sales: ${col.name}`);
+      }
+    }
+
+    const insertSale = db.prepare(`
+      INSERT INTO sales (
+        total, timestamp, invoice_no, payment_method,
+        customer_name, customer_phone, customer_gstin
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+    const saleInfo = insertSale.run(
+      total,
+      date,
+      invoice_no,
+      payment_method,
+      customer_name || null,
+      customer_phone || null,
+      customer_gstin || null
+    );
+
     const saleId = saleInfo.lastInsertRowid;
 
     const insertItem = db.prepare(`
@@ -264,7 +306,6 @@ function saveSale(items) {
           i.sgst
         );
 
-        // ✅ Stock update
         if (i.id) {
           db.prepare(`UPDATE products SET stock = stock - ? WHERE id = ?`)
             .run(i.quantity, i.id);

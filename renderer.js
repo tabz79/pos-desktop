@@ -449,6 +449,33 @@ if (mainContent) {
 }
 }
 function renderCartOverlay() {
+  // 🧾 Generate invoice number preview (non-committed)
+  const today = new Date();
+  const fyStart = today.getMonth() >= 3 ? today.getFullYear() : today.getFullYear() - 1;
+  const fyCode = `${fyStart}${(fyStart + 1).toString().slice(-2)}`;
+  const mmdd = `${(today.getMonth() + 1).toString().padStart(2, '0')}${today.getDate().toString().padStart(2, '0')}`;
+
+  const lastInvKey = `lastInvoiceNumber_${fyCode}_${mmdd}`;
+  const lastUsedNumber = parseInt(localStorage.getItem(lastInvKey) || "0");
+  const previewNumber = lastUsedNumber + 1;
+  const invoiceNo = `INV${fyCode}${mmdd}${previewNumber.toString().padStart(4, '0')}`;
+
+  const invoiceInput = document.getElementById("customerInvoiceNo");
+  if (invoiceInput) invoiceInput.value = invoiceNo;
+
+  // Autofill Store GSTIN
+  (async () => {
+    const gstinInput = document.getElementById("custGSTIN");
+    if (gstinInput) {
+      try {
+        const storeSettings = await window.api.getStoreSettings();
+        gstinInput.value = storeSettings?.store_gstin || "";
+      } catch (err) {
+        console.error("❌ Failed to load store GSTIN:", err);
+      }
+    }
+  })();
+
   const overlayBody = document.getElementById("cartOverlayBody");
   if (!overlayBody) return;
 
@@ -456,36 +483,268 @@ function renderCartOverlay() {
     const product = allProducts.find(p => p.id === item.id) || {};
     const gst = item.gst_percent ?? product.gst_percent ?? 0;
     const discount = item.discount ?? 0;
+    const qty = item.quantity ?? 1;
+    const rate = item.price ?? 0;
+
+    const totalMRP = rate * qty;
+    const gstFraction = gst / (100 + gst);
+    const gstAmount = totalMRP * gstFraction;
+    const base = totalMRP - gstAmount;
+    const discountedBase = base - discount;
+    const finalAmount = discountedBase + gstAmount;
 
     return `
       <tr class="border-b" data-index="${cart.length - 1 - index}">
-        <td class="p-1 text-xs text-center">${index + 1}</td>
-        <td class="p-1 text-xs">${item.name}</td>
-        <td class="p-1 text-xs">
-          <input type="number" value="${item.price}" min="0" class="w-16 text-right border px-1 py-0.5 text-xs rounded" 
+        <td class="p-1 text-sm text-center">${index + 1}</td>
+        <td class="p-1 text-sm">${item.name}</td>
+        <td class="p-1 text-sm">
+          <input type="number" value="${rate}" min="0" class="edit-rate w-16 text-right border px-1 py-0.5 text-xs rounded"
             onchange="updateCartItem(${item.id}, 'price', this.value)" />
         </td>
-        <td class="p-1 text-xs">
-          <input type="number" value="${item.quantity}" min="1" max="${product.stock}" class="w-12 text-center border px-1 py-0.5 text-xs rounded"
+        <td class="p-1 text-sm">
+          <input type="number" value="${qty}" min="1" max="${product.stock}" class="edit-qty w-12 text-center border px-1 py-0.5 text-xs rounded"
             onchange="updateCartItem(${item.id}, 'quantity', this.value)" />
         </td>
-        <td class="p-1 text-xs">
-          <input type="number" value="${gst}" min="0" max="28" class="w-12 text-center border px-1 py-0.5 text-xs rounded"
+        <td class="p-1 text-sm">
+          <input type="number" value="${gst}" min="0" max="28" class="edit-gst w-12 text-center border px-1 py-0.5 text-xs rounded"
             onchange="updateCartItem(${item.id}, 'gst_percent', this.value)" />
         </td>
-        <td class="p-1 text-xs">
-          <input type="number" value="${discount}" min="0" class="w-14 text-right border px-1 py-0.5 text-xs rounded"
+        <td class="p-1 text-sm">
+          <input type="number" value="${discount}" min="0" class="edit-discount w-14 text-right border px-1 py-0.5 text-xs rounded"
             onchange="updateCartItem(${item.id}, 'discount', this.value)" />
         </td>
-        <td class="p-1 text-xs text-right font-semibold">
-          ₹${((item.price * item.quantity) - discount).toFixed(2)}
+        <td class="p-1 text-sm text-right font-semibold amount-cell">
+          ₹${finalAmount.toFixed(2)}
         </td>
       </tr>
     `;
   }).join("");
+
+  // ✅ Call footer update here
+  updateCartSummaryFooter();
+
+  const confirmBtn = document.getElementById("cartCheckoutBtn");
+  if (confirmBtn) {
+    confirmBtn.onclick = async () => {
+      const invoiceNo = document.getElementById("customerInvoiceNo")?.value?.trim();
+      const name = document.getElementById("custName")?.value?.trim() || null;
+      const phone = document.getElementById("custPhone")?.value?.trim() || null;
+      const gstin = document.getElementById("custGSTIN")?.value?.trim() || null;
+
+      if (!invoiceNo) {
+        showToast("⚠️ Invoice number missing.");
+        return;
+      }
+
+      if (cart.length === 0) {
+        showToast("🛒 Cart is empty.");
+        return;
+      }
+
+      const itemsWithAmount = cart.map(item => {
+        const rate = item.price ?? 0;
+        const qty = item.quantity ?? 1;
+        const gst = item.gst_percent ?? 0;
+        const discount = item.discount ?? 0;
+
+        const totalMRP = rate * qty;
+        const gstFraction = gst / (100 + gst);
+        const gstAmount = totalMRP * gstFraction;
+        const base = totalMRP - gstAmount;
+        const discountedBase = base - discount;
+        const finalAmount = discountedBase + gstAmount;
+
+        return {
+          ...item,
+          final_amount: parseFloat(finalAmount.toFixed(2)),
+        };
+      });
+
+      const salePayload = {
+        invoice_no: invoiceNo,
+        timestamp: new Date().toISOString(),
+        customer_name: name,
+        customer_phone: phone,
+        customer_gstin: gstin,
+        items: itemsWithAmount
+      };
+
+      try {
+        const result = await window.api.saveSale(salePayload);
+        if (result?.success) {
+          showToast("✅ Sale saved!");
+          cart.length = 0;
+          updateCartUI();
+          document.getElementById("cartOverlay").classList.add("hidden");
+          localStorage.setItem(`lastInvoiceNumber_${invoiceNo.slice(3, 11)}`, parseInt(invoiceNo.slice(-4)));
+        } else {
+          showToast("❌ Failed to save sale.");
+        }
+      } catch (err) {
+        console.error("❌ saveSale error:", err);
+        showToast("⚠️ Could not save. Try again.");
+      }
+    };
+  }
+
+  // Attach Global Discount Button (after overlay renders)
+const globalDiscountBtn = document.getElementById("applyGlobalDiscountBtn");
+const globalDiscountTypeEl = document.getElementById("globalDiscountType");
+const globalDiscountValueEl = document.getElementById("globalDiscountValue");
+const resetGlobalDiscountBtn = document.getElementById("resetGlobalDiscountBtn");
+
+if (globalDiscountBtn) {
+	if (globalDiscountValueEl) {
+  globalDiscountValueEl.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      globalDiscountBtn.click(); // Trigger Apply button
+    }
+  });
+}
+  globalDiscountBtn.onclick = () => {
+    const type = globalDiscountTypeEl?.value;
+    const value = parseFloat(globalDiscountValueEl?.value);
+
+    if (isNaN(value) || value < 0) {
+      showToast("⚠️ Enter a valid overall discount.");
+      return;
+    }
+
+    applyGlobalDiscount(type, value);
+  };
 }
 
-  window.increaseQty = function (id) {
+if (resetGlobalDiscountBtn) {
+  resetGlobalDiscountBtn.onclick = () => {
+    cart.forEach(item => item.discount = 0);
+    if (globalDiscountValueEl) globalDiscountValueEl.value = "";
+    renderCartOverlay();
+  };
+}
+}
+function applyGlobalDiscount(type, value) {
+  if (!cart.length) return;
+
+  if (type === "percent") {
+    cart.forEach(item => {
+      const rate = item.price || 0;
+      const qty = item.quantity || 1;
+      const gross = rate * qty;
+
+      item.discount = Math.round((gross * value) / 100);
+    });
+} else {
+  const total = cart.reduce((sum, item) => sum + (item.price || 0) * (item.quantity || 1), 0);
+  let remaining = value;
+  let totalAssigned = 0;
+
+  const shares = cart.map(item => {
+    const gross = (item.price || 0) * (item.quantity || 1);
+    const share = Math.floor((gross / total) * value);
+    totalAssigned += share;
+    return share;
+  });
+
+  // Distribute leftover to the last item
+  const leftover = value - totalAssigned;
+  if (shares.length > 0) {
+    shares[shares.length - 1] += leftover;
+  }
+
+  cart.forEach((item, i) => {
+    item.discount = shares[i];
+  });
+}
+
+  renderCartOverlay(); // ✅ triggers live update
+}
+function updateCartSummaryFooter() {
+  const preTotal = cart.reduce((sum, item) => {
+    const rate = item.price || 0;
+    const qty = item.quantity || 1;
+    return sum + (rate * qty);
+  }, 0);
+
+  const postTotal = cart.reduce((sum, item) => {
+    const rate = item.price || 0;
+    const qty = item.quantity || 1;
+    const gst = parseFloat(item.gst_percent) || 0;
+    const discount = item.discount || 0;
+
+    const gross = rate * qty;
+    const gstFraction = gst / (100 + gst);
+    const gstAmount = gross * gstFraction;
+    const base = gross - gstAmount;
+    const discountedBase = base - discount;
+    const finalAmount = discountedBase + gstAmount;
+
+    return sum + finalAmount;
+  }, 0);
+
+  const totalDiscount = preTotal - postTotal;
+
+  const totalGST = cart.reduce((sum, item) => {
+    const rate = item.price || 0;
+    const qty = item.quantity || 1;
+    const gst = parseFloat(item.gst_percent) || 0;
+    const gross = rate * qty;
+    const gstFraction = gst / (100 + gst);
+    const gstAmount = gross * gstFraction;
+    return sum + gstAmount;
+  }, 0);
+
+
+  const setText = (id, val) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = val;
+  };
+
+setText("footerTotalAmount", `₹${preTotal.toFixed(2)}`);
+// Group GST by slab rate
+const gstBreakdown = {};
+
+cart.forEach(item => {
+  const rate = item.price || 0;
+  const qty = item.quantity || 1;
+  const gst = parseFloat(item.gst_percent ?? 0);
+
+  if (!gst || gst === 0) return; // 🛑 Skip non-GST items (0%)
+
+  const gross = rate * qty;
+  const gstFraction = gst / (100 + gst);
+  const rawGST = gross * gstFraction;
+  const rawCGST = rawGST / 2;
+  const rawSGST = rawGST / 2;
+
+  if (!gstBreakdown[gst]) {
+    gstBreakdown[gst] = { cgst: 0, sgst: 0, total: 0 };
+  }
+
+  gstBreakdown[gst].cgst += rawCGST;
+  gstBreakdown[gst].sgst += rawSGST;
+  gstBreakdown[gst].total += rawGST;
+});
+
+// Format & display
+const padLabel = (label) => label.padEnd(18, ' '); // ⬅️ align colon at same x-position
+
+const gstLabelLines = Object.entries(gstBreakdown).map(([rate, data]) => {
+  const r = parseFloat(rate);
+  return [
+    `${padLabel(`CGST (${r / 2}%)`)}: ₹${data.cgst.toFixed(2)}`,
+    `${padLabel(`SGST (${r / 2}%)`)}: ₹${data.sgst.toFixed(2)}`,
+    `${padLabel(`Total GST (${r}%)`)}: ₹${data.total.toFixed(2)}`
+  ].join('\n');
+});
+
+setText("footerGSTLabel", gstLabelLines.join('\n').trim());
+setText("footerTotalGST", `₹${totalGST.toFixed(2)}`);
+setText("footerTotalDiscount", `− ₹${totalDiscount.toFixed(2)}`);
+setText("footerPayable", `₹${postTotal.toFixed(2)}`);
+}
+
+window.increaseQty = function (id) {
   const item = cart.find(p => p.id === id);
   const stockProduct = allProducts.find(p => p.id === id);
   if (!item || !stockProduct) return;
@@ -495,6 +754,7 @@ function renderCartOverlay() {
   }
   item.quantity += 1;
   updateCartUI();
+  updateCartSummaryFooter();  // ✅ live recalc
 };
 
 window.decreaseQty = function (id) {
@@ -506,41 +766,7 @@ window.decreaseQty = function (id) {
       cart.splice(index, 1);
     }
     updateCartUI();
-  }
-};
-
-window.removeItem = function (id) {
-	// ✏️ Update cart item's specific property (used by editable overlay)
-window.updateCartItem = function (id, field, value) {
-  const item = cart.find(p => p.id === id);
-  if (!item) return;
-
-  if (field === 'price' || field === 'gst_percent' || field === 'discount') {
-    const num = parseFloat(value);
-    if (isNaN(num) || num < 0) {
-      showToast("⚠️ Invalid number.");
-      return;
-    }
-    item[field] = num;
-  } else if (field === 'quantity') {
-    const qty = parseInt(value);
-    const stockProduct = allProducts.find(p => p.id === id);
-    if (!stockProduct) return;
-
-    if (isNaN(qty) || qty < 1 || qty > stockProduct.stock) {
-      showToast("⚠️ Quantity out of range.");
-      return;
-    }
-    item.quantity = qty;
-  }
-
-  updateCartUI(); // reflect changes in both overlay and fixed cart UI
-};
-  const index = cart.findIndex(p => p.id === id);
-  if (index !== -1) {
-    const removed = cart.splice(index, 1);
-    showToast(`❌ Removed ${removed[0].name}`);
-    updateCartUI();
+    updateCartSummaryFooter();  // ✅ live recalc
   }
 };
 
@@ -562,22 +788,63 @@ window.updateQty = function (id, newQty) {
 
   item.quantity = newQty;
   updateCartUI();
+  updateCartSummaryFooter();  // ✅ live recalc
 };
 
 window.addToCart = function (id, name, price) {
   const existing = cart.find(p => p.id === id);
+  const product = allProducts.find(p => p.id === id);
+
+  if (!product) {
+    showToast("❌ Product not found.");
+    return;
+  }
+
   if (existing) {
-    const stockProduct = allProducts.find(p => p.id === id);
-    if (existing.quantity >= stockProduct.stock) {
+    if (existing.quantity >= product.stock) {
       showToast("⚠️ Stock limit reached.");
       return;
     }
     existing.quantity += 1;
   } else {
-    cart.push({ id, name, price, quantity: 1 });
+    cart.push({ 
+      id, 
+      name, 
+      price, 
+      quantity: 1, 
+      gst_percent: product.gst_percent || 0,
+      discount: 0
+    });
   }
+
   showToast(`🛒 ${name} added`);
   updateCartUI();
+  updateCartSummaryFooter();  // ✅ live recalc
+};
+window.updateCartItem = function (id, field, value) {
+  const item = cart.find(p => p.id === id);
+  if (!item) return;
+
+  let val = parseFloat(value);
+  if (isNaN(val)) val = 0;
+
+  switch (field) {
+    case "price":
+      item.price = val;
+      break;
+    case "quantity":
+      item.quantity = Math.max(1, Math.floor(val));
+      break;
+    case "gst_percent":
+      item.gst_percent = val;
+      break;
+    case "discount":
+      item.discount = val;
+      break;
+  }
+
+  updateCartUI();
+  renderCartOverlay(); // ✅ Will update summary footer too
 };
 
   window.editProduct = function (id, name, price, stock, hsn_code, category, gst_percent) {
@@ -747,7 +1014,29 @@ invoiceMeta.innerHTML = `
   <div class="border-t my-1"></div>
 `;
 }
+function applyGlobalDiscount(type, value) {
+  if (!cart.length) return;
 
+  if (type === "percent") {
+    cart.forEach(item => {
+      const rate = item.price || 0;
+      const qty = item.quantity || 1;
+      const gross = rate * qty;
+
+      item.discount = Math.round((gross * value) / 100);
+    });
+  } else {
+    const total = cart.reduce((sum, item) => sum + (item.price || 0) * (item.quantity || 1), 0);
+    const perItemShare = value / total;
+
+    cart.forEach(item => {
+      const gross = (item.price || 0) * (item.quantity || 1);
+      item.discount = Math.floor(perItemShare * gross);
+    });
+  }
+
+  renderCartOverlay(); // ✅ triggers live update
+}
 function showToast(message) {
   const toast = document.getElementById("toast");
   if (!toast) return;

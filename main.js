@@ -97,27 +97,51 @@ if (dbAPI) {
   });
 
   // ✅ GST-aware sale handler
-  ipcMain.handle("save-sale", async (event, cart) => {
-    try {
-      if (!Array.isArray(cart) || cart.length === 0) {
-        throw new Error("Cart is empty or invalid");
-      }
+ipcMain.handle("save-sale", async (event, saleData) => {
+  try {
+    const {
+      invoice_no,
+      date,
+      payment_method,
+      customer_name,
+      customer_phone,
+      customer_gstin,
+      items
+    } = saleData;
 
-      console.log("🧾 Enriched cart with GST breakdown:", cart);
-      const result = dbAPI.saveSale(cart);
-
-      if (result.success) {
-        console.log("✅ Sale saved with GST breakdown, Sale ID:", result.sale_id);
-      } else {
-        console.error("❌ Failed to save sale:", result.message);
-      }
-
-      return result;
-    } catch (err) {
-      console.error("❌ Error during sale save:", err);
-      return { success: false, message: err.message || "Unknown error" };
+    if (!Array.isArray(items) || items.length === 0) {
+      throw new Error("Cart is empty or invalid");
     }
-  });
+
+    console.log("🧾 Processing Sale...");
+    console.log("Invoice No:", invoice_no);
+    console.log("Date:", date);
+    console.log("Payment Method:", payment_method);
+    console.log("Customer:", customer_name, customer_phone, customer_gstin);
+    console.log("Items:", items);
+
+    const result = dbAPI.saveSale({
+      invoice_no,
+      date,
+      payment_method,
+      customer_name,
+      customer_phone,
+      customer_gstin,
+      items
+    });
+
+    if (result.success) {
+      console.log("✅ Sale saved successfully. Sale ID:", result.sale_id);
+    } else {
+      console.error("❌ Failed to save sale:", result.message);
+    }
+
+    return result;
+  } catch (err) {
+    console.error("❌ Error during sale save:", err);
+    return { success: false, message: err.message || "Unknown error" };
+  }
+});
 
   // ✅ SETTINGS: Load full store settings
   ipcMain.handle("get-store-settings", () => {
