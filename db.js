@@ -24,33 +24,41 @@ try {
     const columns = db.prepare(`PRAGMA table_info(products)`).all();
     const hasCategory = columns.some(col => col.name === 'category');
     const hasGST = columns.some(col => col.name === 'gst_percent');
+    const hasProductId = columns.some(col => col.name === 'product_id');
+    const hasSubCategory = columns.some(col => col.name === 'sub_category');
+    const hasBrand = columns.some(col => col.name === 'brand');
+    const hasModelName = columns.some(col => col.name === 'model_name');
+    const hasUnit = columns.some(col => col.name === 'unit');
+    const hasBarcodeValue = columns.some(col => col.name === 'barcode_value');
 
-    if (!hasCategory || !hasGST) {
-      console.log("♻️ Rebuilding products table with category + gst_percent...");
+    if (!hasCategory || !hasGST || !hasProductId || !hasSubCategory || !hasBrand || !hasModelName || !hasUnit || !hasBarcodeValue) {
+      console.log("♻️ Rebuilding products table with new Excel fields...");
       db.exec('PRAGMA foreign_keys = OFF');
-
       db.prepare(`ALTER TABLE products RENAME TO products_old`).run();
-
       db.prepare(`
         CREATE TABLE products (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
+          product_id TEXT UNIQUE,
           name TEXT NOT NULL,
           price REAL NOT NULL,
           stock INTEGER NOT NULL,
           category TEXT,
+          sub_category TEXT,
+          brand TEXT,
+          model_name TEXT,
+          unit TEXT,
           hsn_code TEXT,
-          gst_percent REAL
+          gst_percent REAL,
+          barcode_value TEXT UNIQUE
         )
       `).run();
-
       db.prepare(`
-        INSERT INTO products (id, name, price, stock, hsn_code)
-        SELECT id, name, price, stock, hsn_code FROM products_old
+        INSERT INTO products (id, name, price, stock, category, hsn_code, gst_percent)
+        SELECT id, name, price, stock, category, hsn_code, gst_percent FROM products_old
       `).run();
-
       db.prepare(`DROP TABLE products_old`).run();
       db.exec('PRAGMA foreign_keys = ON');
-      console.log("✅ Products table updated.");
+      console.log("✅ Products table updated with Excel fields.");
     }
   } catch (err) {
     console.error("❌ Failed to migrate products table:", err);
@@ -152,8 +160,8 @@ function getAllProducts() {
 // ✅ Add a new product
 function addProduct(product) {
   const stmt = db.prepare(`
-    INSERT INTO products (name, price, stock, category, hsn_code, gst_percent)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO products (name, price, stock, category, hsn_code, gst_percent, product_id, sub_category, brand, model_name, unit, barcode_value)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const info = stmt.run(
     product.name,
@@ -161,7 +169,13 @@ function addProduct(product) {
     product.stock,
     product.category || null,
     product.hsn_code || null,
-    product.gst_percent ?? null
+    product.gst_percent ?? null,
+    product.product_id || null,
+    product.sub_category || null,
+    product.brand || null,
+    product.model_name || null,
+    product.unit || null,
+    product.barcode_value || null
   );
   return { success: true, id: info.lastInsertRowid };
 }
@@ -185,7 +199,7 @@ function updateProduct(product) {
   try {
     const stmt = db.prepare(`
       UPDATE products
-      SET name = ?, price = ?, stock = ?, category = ?, hsn_code = ?, gst_percent = ?
+      SET name = ?, price = ?, stock = ?, category = ?, hsn_code = ?, gst_percent = ?, product_id = ?, sub_category = ?, brand = ?, model_name = ?, unit = ?, barcode_value = ?
       WHERE id = ?
     `);
     const info = stmt.run(
@@ -195,6 +209,12 @@ function updateProduct(product) {
       product.category || null,
       product.hsn_code || null,
       product.gst_percent ?? null,
+      product.product_id || null,
+      product.sub_category || null,
+      product.brand || null,
+      product.model_name || null,
+      product.unit || null,
+      product.barcode_value || null,
       product.id
     );
     return info.changes > 0

@@ -38,7 +38,13 @@ document.addEventListener("DOMContentLoaded", () => {
             <h2 class="text-lg font-semibold mb-4" id="modalTitle">Add Product</h2>
             <input type="text" id="productName" placeholder="Name" class="w-full mb-2 p-2 border rounded" />
             <input type="number" id="productPrice" placeholder="Price" class="w-full mb-2 p-2 border rounded" />
-            <input type="number" id="productStock" placeholder="Stock" class="w-full mb-4 p-2 border rounded" />
+            <input type="number" id="productStock" placeholder="Stock" class="w-full mb-2 p-2 border rounded" />
+            <input type="text" id="productProductId" placeholder="Product ID" class="w-full mb-2 p-2 border rounded" />
+            <input type="text" id="productSubCategory" placeholder="Sub Category" class="w-full mb-2 p-2 border rounded" />
+            <input type="text" id="productBrand" placeholder="Brand" class="w-full mb-2 p-2 border rounded" />
+            <input type="text" id="productModelName" placeholder="Model Name" class="w-full mb-2 p-2 border rounded" />
+            <input type="text" id="productUnit" placeholder="Unit" class="w-full mb-2 p-2 border rounded" />
+            <input type="text" id="productBarcodeValue" placeholder="Barcode Value" class="w-full mb-2 p-2 border rounded" />
 			<select id="productCategory" class="w-full mb-4 p-2 border rounded">
   <option value="">Select Category</option>
 </select>
@@ -167,6 +173,12 @@ function setupProductView() {
   const categorySelect = document.getElementById("productCategory");
   const hsnInput = document.getElementById("productHSN");
   const gstInput = document.getElementById("productGST");
+  const productIdInput = document.getElementById("productProductId");
+  const subCategoryInput = document.getElementById("productSubCategory");
+  const brandInput = document.getElementById("productBrand");
+  const modelNameInput = document.getElementById("productModelName");
+  const unitInput = document.getElementById("productUnit");
+  const barcodeValueInput = document.getElementById("productBarcodeValue");
 
   if (categorySelect && hsnInput && gstInput) {
     categorySelect.addEventListener("change", () => {
@@ -198,6 +210,12 @@ saveBtn.addEventListener("click", async () => {
   const stock = parseInt(stockInput.value);
   const hsn = hsnInput.value.trim();
   const gst = parseFloat(gstInput.value);
+  const product_id = productIdInput.value.trim();
+  const sub_category = subCategoryInput.value.trim();
+  const brand = brandInput.value.trim();
+  const model_name = modelNameInput.value.trim();
+  const unit = unitInput.value.trim();
+  const barcode_value = barcodeValueInput.value.trim();
 
   if (!name || isNaN(price) || isNaN(stock)) {
     showToast("⚠️ Please fill all fields correctly.");
@@ -209,7 +227,13 @@ saveBtn.addEventListener("click", async () => {
     price,
     stock,
     hsn_code: hsn || null,
-    gst_percent: isNaN(gst) ? null : gst
+    gst_percent: isNaN(gst) ? null : gst,
+    product_id: product_id || null,
+    sub_category: sub_category || null,
+    brand: brand || null,
+    model_name: model_name || null,
+    unit: unit || null,
+    barcode_value: barcode_value || null
   };
 
   let result;
