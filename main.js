@@ -99,14 +99,25 @@ if (dbAPI) {
   // ✅ GST-aware sale handler
 ipcMain.handle("save-sale", async (event, saleData) => {
   try {
-    const {
-      invoice_no,
-      payment_method,
-      customer_name,
-      customer_phone,
-      customer_gstin,
-      items
-    } = saleData;
+const {
+  payment_method,
+  customer_name,
+  customer_phone,
+  customer_gstin,
+  items
+} = saleData;
+
+const counterRow = dbAPI.db.prepare(`SELECT current_number FROM invoice_counter WHERE id = 1`).get();
+const newCounter = counterRow.current_number + 1;
+
+const now = new Date();
+const year = now.getFullYear();
+const month = String(now.getMonth() + 1).padStart(2, '0');
+const date = String(now.getDate()).padStart(2, '0');
+const invoice_no = `INV${year}${month}${date}${String(newCounter).padStart(4, '0')}`;
+
+// 🔐 Persist the increment
+dbAPI.db.prepare(`UPDATE invoice_counter SET current_number = ? WHERE id = 1`).run(newCounter);
 
     const timestamp = new Date().toISOString(); // 🔧 Injected timestamp
 
@@ -131,13 +142,24 @@ ipcMain.handle("save-sale", async (event, saleData) => {
       timestamp  // ✅ Added this field
     });
 
-    if (result.success) {
-      console.log("✅ Sale saved successfully. Sale ID:", result.sale_id);
-    } else {
-      console.error("❌ Failed to save sale:", result.message);
-    }
+if (result.success) {
+  console.log("✅ Sale saved successfully. Sale ID:", result.sale_id);
 
-    return result;
+  // 🔧 Sync invoice_counter if needed
+  const serialPart = parseInt(invoice_no.slice(-4), 10);
+  const existingCounter = dbAPI.db.prepare(`SELECT current_number FROM invoice_counter WHERE id = 1`).get();
+
+  if (existingCounter && serialPart > existingCounter.current_number) {
+    dbAPI.db.prepare(`UPDATE invoice_counter SET current_number = ? WHERE id = 1`).run(serialPart);
+    console.log(`🔼 Synced invoice_counter to ${serialPart}`);
+  }
+
+} else {
+  console.error("❌ Failed to save sale:", result.message);
+}
+
+
+return result;
   } catch (err) {
     console.error("❌ Error during sale save:", err);
     return { success: false, message: err.message || "Unknown error" };
@@ -208,6 +230,33 @@ ipcMain.handle("save-store-settings", (event, settings) => {
   } catch (err) {
     console.error("❌ Failed to save store settings:", err);
     return { success: false, message: err.message || "Unknown error" };
+  }
+});
+// ✅ Generate and increment next invoice number
+ipcMain.handle("get-next-invoice-no", () => {
+  try {
+    const now = new Date();
+    const yyyymmdd = now.toISOString().slice(0, 10).replace(/-/g, ""); // "20250727"
+
+    // Get current number
+    let row = dbAPI.db.prepare("SELECT current_number FROM invoice_counter WHERE id = 1").get();
+
+    if (!row) {
+      // First-time setup
+      dbAPI.db.prepare("INSERT INTO invoice_counter (id, current_number) VALUES (1, 1)").run();
+      row = { current_number: 1 };
+    }
+
+    const nextSerial = row.current_number + 1;
+
+    // Persist it immediately to avoid reuse
+    dbAPI.db.prepare("UPDATE invoice_counter SET current_number = ? WHERE id = 1").run(nextSerial);
+
+    const invoiceNo = `INV${yyyymmdd}${String(nextSerial).padStart(4, "0")}`;
+    return invoiceNo;
+  } catch (err) {
+    console.error("❌ Failed to generate invoice number:", err.message);
+    return null;
   }
 });
 }

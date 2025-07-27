@@ -314,7 +314,11 @@ const {
     });
 
     insertMany(enrichedItems);
-    return { success: true, sale_id: saleId };
+    return {
+  success: true,
+  sale_id: saleId,
+  invoice_no: invoice_no  // ✅ Send it back!
+};
   } catch (err) {
     console.error("❌ Failed to save sale:", err);
     return { success: false, message: 'Error saving sale' };

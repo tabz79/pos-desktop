@@ -449,32 +449,26 @@ if (mainContent) {
 }
 }
 function renderCartOverlay() {
-  // 🧾 Generate invoice number preview (non-committed)
-  const today = new Date();
-  const fyStart = today.getMonth() >= 3 ? today.getFullYear() : today.getFullYear() - 1;
-  const fyCode = `${fyStart}${(fyStart + 1).toString().slice(-2)}`;
-  const mmdd = `${(today.getMonth() + 1).toString().padStart(2, '0')}${today.getDate().toString().padStart(2, '0')}`;
-
-  const lastInvKey = `lastInvoiceNumber_${fyCode}_${mmdd}`;
-  const lastUsedNumber = parseInt(localStorage.getItem(lastInvKey) || "0");
-  const previewNumber = lastUsedNumber + 1;
-  const invoiceNo = `INV${fyCode}${mmdd}${previewNumber.toString().padStart(4, '0')}`;
-
+// ✅ Generate invoice number once when cart opens
+(async () => {
   const invoiceInput = document.getElementById("customerInvoiceNo");
-  if (invoiceInput) invoiceInput.value = invoiceNo;
-
-  // Autofill Store GSTIN
-  (async () => {
-    const gstinInput = document.getElementById("custGSTIN");
-    if (gstinInput) {
-      try {
-        const storeSettings = await window.api.getStoreSettings();
-        gstinInput.value = storeSettings?.store_gstin || "";
-      } catch (err) {
-        console.error("❌ Failed to load store GSTIN:", err);
+  if (invoiceInput) {
+    try {
+      const backendInvoiceNo = await window.api.getNextInvoiceNo();
+      if (backendInvoiceNo) {
+        invoiceInput.value = backendInvoiceNo;
+      } else {
+        invoiceInput.value = "INV_FAILED";
+        showToast("⚠️ Failed to get invoice number.");
       }
+    } catch (err) {
+      console.error("⚠️ Invoice fetch failed:", err);
+      invoiceInput.value = "INV_ERR";
     }
-  })();
+  }
+})();
+
+  // ✅ DO NOT set invoiceInput.value again here
 
   const overlayBody = document.getElementById("cartOverlayBody");
   if (!overlayBody) return;
@@ -571,32 +565,43 @@ const salePayload = {
   items: itemsWithAmount
 };
 
-      try {
-        const clonedCart = structuredClone(itemsWithAmount); // 🧠 Deep clone for invoice
-const result = await window.api.saveSale(salePayload);
 
-if (result?.success) {
-  showInvoice(clonedCart); // 🖨️ Show invoice before reset
-  showToast("✅ Sale saved!");
+try {
+  const result = await window.api.saveSale(salePayload);
+  console.log("🧾 Final Invoice No used:", result.invoice_no); // Debug log
 
-  cart.length = 0;
-  updateCartUI();
-  document.getElementById("cartOverlay").classList.add("hidden");
-  localStorage.setItem("lastInvoiceNo", invoiceNo);
-}
-        if (result?.success) {
-          showToast("✅ Sale saved!");
-          cart.length = 0;
-          updateCartUI();
-          document.getElementById("cartOverlay").classList.add("hidden");
-          localStorage.setItem(`lastInvoiceNumber_${invoiceNo.slice(3, 11)}`, parseInt(invoiceNo.slice(-4)));
-        } else {
-          showToast("❌ Failed to save sale.");
-        }
-      } catch (err) {
-        console.error("❌ saveSale error:", err);
-        showToast("⚠️ Could not save. Try again.");
+  if (result?.success) {
+    const invoiceNo = result.invoice_no;
+
+    // ✅ Inject confirmed invoice number into DOM first
+    const invoiceInput = document.getElementById("customerInvoiceNo");
+    if (invoiceInput && invoiceNo) {
+      invoiceInput.value = invoiceNo;
+    }
+
+    const clonedCart = structuredClone(itemsWithAmount); // ✅ Clone after DOM is updated
+    showInvoice(clonedCart); // ✅ Now pulls correct invoice number
+
+    showToast("✅ Sale saved!");
+    cart.length = 0;
+    updateCartUI();
+    document.getElementById("cartOverlay").classList.add("hidden");
+
+    // ✅ Save serial part for preview
+    if (invoiceNo.length >= 15) {
+      const prefix = invoiceNo.slice(3, 11);
+      const serial = parseInt(invoiceNo.slice(-4));
+      if (!isNaN(serial)) {
+        localStorage.setItem(`lastInvoiceNumber_${prefix}`, serial);
       }
+    }
+  } else {
+    showToast("❌ Failed to save sale.");
+  }
+} catch (err) {
+  console.error("❌ saveSale error:", err);
+  showToast("⚠️ Could not save. Try again.");
+}
     };
   }
 // ✅ Wire Preview Invoice button ONCE when overlay is rendered
