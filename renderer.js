@@ -560,15 +560,16 @@ function renderCartOverlay() {
           final_amount: parseFloat(finalAmount.toFixed(2)),
         };
       });
-
-      const salePayload = {
-        invoice_no: invoiceNo,
-        timestamp: new Date().toISOString(),
-        customer_name: name,
-        customer_phone: phone,
-        customer_gstin: gstin,
-        items: itemsWithAmount
-      };
+const paymentMethod = document.getElementById("paymentMode")?.value?.trim() || "Cash";
+const salePayload = {
+  invoice_no: invoiceNo,
+  timestamp: new Date().toISOString(),
+  customer_name: name,
+  customer_phone: phone,
+  customer_gstin: gstin,
+  payment_method: paymentMethod, // ✅ now included
+  items: itemsWithAmount
+};
 
       try {
         const clonedCart = structuredClone(itemsWithAmount); // 🧠 Deep clone for invoice
