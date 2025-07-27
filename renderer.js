@@ -525,6 +525,7 @@ function renderCartOverlay() {
 
   const confirmBtn = document.getElementById("cartCheckoutBtn");
   if (confirmBtn) {
+	  confirmBtn.disabled = false; // 👈 this is what’s missing!
     confirmBtn.onclick = async () => {
       const invoiceNo = document.getElementById("customerInvoiceNo")?.value?.trim();
       const name = document.getElementById("custName")?.value?.trim() || null;
@@ -570,7 +571,18 @@ function renderCartOverlay() {
       };
 
       try {
-        const result = await window.api.saveSale(salePayload);
+        const clonedCart = structuredClone(itemsWithAmount); // 🧠 Deep clone for invoice
+const result = await window.api.saveSale(salePayload);
+
+if (result?.success) {
+  showInvoice(clonedCart); // 🖨️ Show invoice before reset
+  showToast("✅ Sale saved!");
+
+  cart.length = 0;
+  updateCartUI();
+  document.getElementById("cartOverlay").classList.add("hidden");
+  localStorage.setItem("lastInvoiceNo", invoiceNo);
+}
         if (result?.success) {
           showToast("✅ Sale saved!");
           cart.length = 0;
@@ -586,7 +598,17 @@ function renderCartOverlay() {
       }
     };
   }
-
+// ✅ Wire Preview Invoice button ONCE when overlay is rendered
+const previewBtn = document.getElementById("previewInvoiceBtn");
+if (previewBtn) {
+  previewBtn.onclick = () => {
+    if (cart.length === 0) {
+      showToast("🛒 Cart is empty.");
+      return;
+    }
+    showInvoice([...cart]);
+  };
+}
   // Attach Global Discount Button (after overlay renders)
 const globalDiscountBtn = document.getElementById("applyGlobalDiscountBtn");
 const globalDiscountTypeEl = document.getElementById("globalDiscountType");
@@ -820,6 +842,16 @@ window.addToCart = function (id, name, price) {
   showToast(`🛒 ${name} added`);
   updateCartUI();
   updateCartSummaryFooter();  // ✅ live recalc
+  const previewBtn = document.getElementById("previewInvoiceBtn");
+if (previewBtn) {
+  previewBtn.addEventListener("click", () => {
+    if (cart.length === 0) {
+      showToast("🛒 Cart is empty.");
+      return;
+    }
+    showInvoice([...cart]);
+  });
+}
 };
 window.updateCartItem = function (id, field, value) {
   const item = cart.find(p => p.id === id);
@@ -984,13 +1016,50 @@ items.forEach((item, index) => {
 tableHTML += `</tbody></table>`;
 invoiceItemsDiv.innerHTML = tableHTML;
   const grandTotal = subtotal + totalGST;
-  invoiceTotalP.innerHTML = `
-    <div class="text-sm mt-3 border-t pt-2 text-right">
-      <div>Subtotal: ₹${subtotal.toFixed(2)}</div>
-      <div>GST Total: ₹${totalGST.toFixed(2)} (CGST + SGST)</div>
-      <div class="text-lg font-bold mt-1">Total: ₹${grandTotal.toFixed(2)}</div>
-    </div>
-  `;
+// ➕ New slab-wise GST breakdown (matches updateCartSummaryFooter logic)
+const gstBreakdown = {};
+items.forEach(item => {
+  const rate = item.price || 0;
+  const qty = item.quantity || 1;
+  const gst = parseFloat(item.gst_percent ?? 0);
+
+  if (!gst || gst === 0) return;
+
+  const gross = rate * qty;
+  const gstFraction = gst / (100 + gst);
+  const rawGST = gross * gstFraction;
+  const rawCGST = rawGST / 2;
+  const rawSGST = rawGST / 2;
+
+  if (!gstBreakdown[gst]) {
+    gstBreakdown[gst] = { cgst: 0, sgst: 0, total: 0 };
+  }
+
+  gstBreakdown[gst].cgst += rawCGST;
+  gstBreakdown[gst].sgst += rawSGST;
+  gstBreakdown[gst].total += rawGST;
+});
+
+const gstLines = Object.entries(gstBreakdown)
+  .sort((a, b) => parseFloat(a[0]) - parseFloat(b[0])) // low to high
+  .map(([rate, data]) => `
+    <div>CGST (${rate / 2}%): ₹${data.cgst.toFixed(2)}</div>
+    <div>SGST (${rate / 2}%): ₹${data.sgst.toFixed(2)}</div>
+    <div>Total GST (${rate}%): ₹${data.total.toFixed(2)}</div>
+  `).join("");
+
+// ➕ Total pre-discount
+const grossTotal = items.reduce((sum, item) => sum + (item.price || 0) * (item.quantity || 1), 0);
+const totalDiscount = grossTotal - (subtotal + totalGST);
+
+invoiceTotalP.innerHTML = `
+  <div class="text-sm mt-3 border-t pt-2 text-right">
+    <div>Total Amount: ₹${grossTotal.toFixed(2)}</div>
+    ${gstLines}
+    <div class="text-red-600">Discount: − ₹${totalDiscount.toFixed(2)}</div>
+    <div class="text-lg font-bold mt-1">Payable: ₹${(subtotal + totalGST).toFixed(2)}</div>
+  </div>
+`;
 
 const now = new Date();
 const date = now.toLocaleString("en-IN", {
@@ -998,16 +1067,18 @@ const date = now.toLocaleString("en-IN", {
   timeStyle: "short"
 });
 
-const saleId = Math.floor(100000 + Math.random() * 900000);
+const invoiceNo = document.getElementById("customerInvoiceNo")?.value?.trim() || "N/A";
+const custName = document.getElementById("custName")?.value?.trim() || "—";
+const custPhone = document.getElementById("custPhone")?.value?.trim() || "—";
 
 invoiceMeta.innerHTML = `
   <div class="text-xs flex justify-between">
     <div class="text-left">
-      Customer: ${settings.customer_name || "—"}<br>
-      Phone: ${settings.customer_phone || "—"}
+      Customer: ${custName}<br>
+      Phone: ${custPhone}
     </div>
     <div class="text-right text-nowrap">
-      Invoice No: ${saleId}<br>
+      Invoice No: ${invoiceNo}<br>
       ${date}
     </div>
   </div>
@@ -1035,7 +1106,8 @@ function applyGlobalDiscount(type, value) {
     });
   }
 
-  renderCartOverlay(); // ✅ triggers live update
+  renderCartOverlay();  // ✅ triggers live update
+  // 🧾 Wire Preview Invoice button inside cart overlay
 }
 function showToast(message) {
   const toast = document.getElementById("toast");

@@ -209,15 +209,15 @@ function updateProduct(product) {
 // ✅ Save a full sale (sale + items with GST extracted from MRP)
 function saveSale(saleData) {
   try {
-    const {
-      invoice_no,
-      date,
-      payment_method,
-      customer_name,
-      customer_phone,
-      customer_gstin,
-      items
-    } = saleData;
+const {
+  invoice_no,
+  timestamp, // ✅ Correct key passed from main.js
+  payment_method,
+  customer_name,
+  customer_phone,
+  customer_gstin,
+  items
+} = saleData;
 
     if (!Array.isArray(items) || items.length === 0) {
       throw new Error("Sale must include items");
@@ -272,7 +272,7 @@ function saveSale(saleData) {
     `);
     const saleInfo = insertSale.run(
       total,
-      date,
+      timestamp,
       invoice_no,
       payment_method,
       customer_name || null,

@@ -101,7 +101,6 @@ ipcMain.handle("save-sale", async (event, saleData) => {
   try {
     const {
       invoice_no,
-      date,
       payment_method,
       customer_name,
       customer_phone,
@@ -109,25 +108,27 @@ ipcMain.handle("save-sale", async (event, saleData) => {
       items
     } = saleData;
 
+    const timestamp = new Date().toISOString(); // 🔧 Injected timestamp
+
     if (!Array.isArray(items) || items.length === 0) {
       throw new Error("Cart is empty or invalid");
     }
 
     console.log("🧾 Processing Sale...");
     console.log("Invoice No:", invoice_no);
-    console.log("Date:", date);
+    console.log("Date:", timestamp);  // 🔍 Log actual date
     console.log("Payment Method:", payment_method);
     console.log("Customer:", customer_name, customer_phone, customer_gstin);
     console.log("Items:", items);
 
     const result = dbAPI.saveSale({
       invoice_no,
-      date,
       payment_method,
       customer_name,
       customer_phone,
       customer_gstin,
-      items
+      items,
+      timestamp  // ✅ Added this field
     });
 
     if (result.success) {
