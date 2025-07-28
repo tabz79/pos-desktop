@@ -1,3 +1,70 @@
+/**
+ * Generates a product_id and barcode_value based on product details.
+ * This function is pure and can be reused for bulk imports.
+ * It replicates the user's Excel formula logic.
+ * @param {object} params
+ * @param {string} [params.category=''] - Product category
+ * @param {string} [params.name=''] - Product name
+ * @param {string} [params.brand=''] - Brand name
+ * @param {string} [params.model_name=''] - Model name
+ * @returns {{product_id: string, barcode_value: string}}
+ */
+function generateProductDetails({ category = '', name = '', brand = '', model_name = '' }) {
+  // 1. Category part: First 3 letters, padded with 'X' if less than 3.
+  const categoryPart = (category || '').substring(0, 3).padEnd(3, 'X').toUpperCase();
+
+  // 2. Name part: First letter of up to 6 words, padded to 6 with '0'.
+  const namePart = (name || '').trim().split(/\s+/).filter(Boolean).slice(0, 6).map(word => word.charAt(0)).join('').padEnd(6, '0').toUpperCase();
+
+  // 3. Brand part: Initials of first 2 words, or first 2 letters of a single word.
+  const brandWords = (brand || '').trim().split(/\s+/).filter(Boolean);
+  let brandPart = '';
+  if (brandWords.length > 1) {
+    brandPart = brandWords.slice(0, 2).map(word => word.charAt(0)).join('');
+  } else if (brandWords.length === 1) {
+    brandPart = brandWords[0].substring(0, 2);
+  }
+  brandPart = brandPart.padEnd(2, '0').toUpperCase();
+
+  // 4. Model part: Prefix before the first '-'.
+  const modelPart = ((model_name || '').trim().split('-')[0] || '').toUpperCase();
+
+  const finalId = `${categoryPart}${namePart}${brandPart}${modelPart}`;
+
+  return {
+    product_id: finalId,
+    barcode_value: finalId,
+  };
+}
+
+/**
+ * Parses the price from a model name suffix (e.g., "a1-2k" -> 2000).
+ * @param {string} model_name - The model name string.
+ * @returns {number | null} The parsed price or null if invalid.
+ */
+function parsePriceFromModel(model_name = '') {
+  try {
+    const suffix = (model_name || '').split('-')[1];
+    if (!suffix) return null;
+
+    const multiplierChar = suffix.slice(-1).toLowerCase();
+    const numericPart = parseFloat(suffix.slice(0, -1));
+
+    if (isNaN(numericPart)) return null;
+
+    const multipliers = { k: 1000, h: 100, t: 10 };
+    const multiplier = multipliers[multiplierChar];
+
+    if (multiplier) {
+      return numericPart * multiplier;
+    }
+    return null;
+  } catch (error) {
+    return null;
+  }
+}
+
+
 // ✅ POS Renderer Script with Live Stock Update, Quantity Control, Print Layout, and Business Profile Support
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -216,7 +283,7 @@ function setupProductView() {
         <td class="p-2">₹${p.price}</td>
         <td class="p-2">${p.stock}</td>
         <td class="p-2 space-x-2">
-          <button class="text-blue-600" onclick="editProduct(${p.id}, '${p.name.replace(/'/g, "\\'")}', ${p.price}, ${p.stock}, '${p.hsn_code || ""}', '${p.category || ""}', ${p.gst_percent ?? 'null'})">✏️</button>
+          <button class="text-blue-600" onclick="editProduct(${p.id}, '${p.name.replace(/'/g, "\'")}', ${p.price}, ${p.stock}, '${p.hsn_code || ""}', '${p.category || ""}', ${p.gst_percent ?? 'null'})">✏️</button>
           <button class="text-red-600" onclick="deleteProduct(${p.id})">🗑️</button>
         </td>
       </tr>
@@ -255,6 +322,33 @@ function setupProductView() {
   const unitInput = document.getElementById("productUnit");
   const barcodeValueInput = document.getElementById("productBarcodeValue");
 
+  // --- Auto-generation logic ---
+  function updateGeneratedFields() {
+    // 1. Generate Product ID and Barcode
+    const details = generateProductDetails({
+      category: categorySelect.value,
+      name: nameInput.value,
+      brand: brandInput.value,
+      model_name: modelNameInput.value,
+    });
+    productIdInput.value = details.product_id;
+    barcodeValueInput.value = details.barcode_value;
+
+    // 2. Parse Price from Model Name
+    const parsedPrice = parsePriceFromModel(modelNameInput.value);
+    if (parsedPrice !== null) {
+      priceInput.value = parsedPrice;
+    }
+  }
+
+  // Attach event listeners to trigger the auto-generation
+  nameInput.addEventListener('input', updateGeneratedFields);
+  brandInput.addEventListener('input', updateGeneratedFields);
+  modelNameInput.addEventListener('input', updateGeneratedFields);
+  categorySelect.addEventListener('change', updateGeneratedFields);
+  // --- End of auto-generation logic ---
+
+
   if (categorySelect && hsnInput && gstInput) {
     categorySelect.addEventListener("change", () => {
       const selectedCategory = categorySelect.value;
@@ -268,9 +362,14 @@ function setupProductView() {
 
   addBtn.addEventListener("click", () => {
     editingProductId = null;
-    nameInput.value = "";
-    priceInput.value = "";
-    stockInput.value = "";
+    // Clear all fields in the modal form
+    const fieldsToClear = [
+      nameInput, priceInput, stockInput, hsnInput, gstInput,
+      categorySelect, subCategoryInput, brandInput, modelNameInput,
+      unitInput, barcodeValueInput, productIdInput
+    ];
+    fieldsToClear.forEach(field => field.value = "");
+    
     modalTitle.textContent = "Add Product";
     modal.classList.remove("hidden");
     if (fixedCart) fixedCart.style.display = "none";
@@ -520,7 +619,7 @@ if (viewName === "Settings") {
     allProducts.forEach(p => {
       const card = document.createElement("div");
       card.className = "border rounded shadow p-4 flex flex-col justify-between";
-      const safeName = p.name.replace(/'/g, "\\'");
+      const safeName = p.name.replace(/'/g, "\'");
       card.innerHTML = `
         <div>
           <h3 class="text-lg font-semibold">${p.name}</h3>
