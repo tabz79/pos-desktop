@@ -107,7 +107,7 @@ try {
   try {
     console.log("♻️ Forcing recreation of sale_items table...");
     db.exec('PRAGMA foreign_keys = OFF');
-    db.prepare(`DROP TABLE IF EXISTS sale_items`).run();
+
     db.exec('PRAGMA foreign_keys = ON');
 
     db.prepare(`
@@ -141,6 +141,16 @@ try {
       store_address TEXT
     )
   `).run();
+
+  // ✅ Create invoice_counter table
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS invoice_counter (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      current_number INTEGER DEFAULT 0
+    )
+  `).run();
+  // Initialize counter if it doesn't exist
+  db.prepare(`INSERT OR IGNORE INTO invoice_counter (id, current_number) VALUES (1, 0)`).run();
 
   console.log("✅ SQLite DB initialized successfully.");
 } catch (err) {
@@ -240,19 +250,6 @@ function saveSale(saleData) {
       throw new Error("Sale must include items");
     }
 
-    // Get current counter value and increment it within the transaction
-    let counterRow = db.prepare("SELECT current_number FROM invoice_counter WHERE id = 1").get();
-    if (!counterRow) {
-      db.prepare("INSERT INTO invoice_counter (id, current_number) VALUES (1, 0)").run();
-      counterRow = { current_number: 0 };
-    }
-    const nextSerial = counterRow.current_number + 1;
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const date = String(now.getDate()).padStart(2, '0');
-    const finalInvoiceNo = `INV${year}${month}${date}${String(nextSerial).padStart(4, '0')}`;
-
     const enrichedItems = [];
 
     for (const i of items) {
@@ -303,7 +300,7 @@ function saveSale(saleData) {
     const saleInfo = insertSale.run(
       total,
       timestamp,
-      finalInvoiceNo, // Use the newly generated invoice number
+      invoice_no, // Use the provided invoice number
       payment_method,
       customer_name || null,
       customer_phone || null,
@@ -345,13 +342,10 @@ function saveSale(saleData) {
 
     insertMany(enrichedItems);
 
-    // 🔐 Increment the counter ONLY after successful sale
-    db.prepare("UPDATE invoice_counter SET current_number = ? WHERE id = 1").run(nextSerial);
-
     return {
       success: true,
       sale_id: saleId,
-      invoice_no: finalInvoiceNo // Send back the final generated invoice number
+      invoice_no: invoice_no // Send back the provided invoice number
     };
   } catch (err) {
     console.error("❌ Failed to save sale:", err);

@@ -1126,7 +1126,7 @@ try {
       const prefix = invoiceNo.slice(3, 11);
       const serial = parseInt(invoiceNo.slice(-4));
       if (!isNaN(serial)) {
-        localStorage.setItem(`lastInvoiceNumber_${prefix}`, serial);
+        localStorage.setItem(`lastInvoiceNumber_inv${prefix}`, serial);
       }
     }
   } else {
