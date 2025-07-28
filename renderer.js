@@ -14,7 +14,13 @@ document.addEventListener("DOMContentLoaded", () => {
         <div class="flex justify-between items-center mb-4">
           <h2 class="text-xl font-bold">Product List</h2>
           <div class="flex gap-2">
-            <input type="text" id="searchInput" placeholder="Search..." class="border rounded px-2 py-1" />
+            <input type="text" id="searchInput" placeholder="Search by name..." class="border rounded px-2 py-1" />
+            <select id="filterCategory" class="border rounded px-2 py-1">
+              <option value="">All Categories</option>
+            </select>
+            <select id="filterSubCategory" class="border rounded px-2 py-1" disabled>
+              <option value="">All Sub Categories</option>
+            </select>
             <button id="addProductBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded">
               + Add Product
             </button>
@@ -25,6 +31,11 @@ document.addEventListener("DOMContentLoaded", () => {
           <thead>
             <tr class="bg-gray-200 text-left">
               <th class="p-2">Name</th>
+              <th class="p-2">Category</th>
+              <th class="p-2">Sub Category</th>
+              <th class="p-2">Brand</th>
+              <th class="p-2">Model</th>
+              <th class="p-2">Unit</th>
               <th class="p-2">Price</th>
               <th class="p-2">Stock</th>
               <th class="p-2">Actions</th>
@@ -36,20 +47,30 @@ document.addEventListener("DOMContentLoaded", () => {
         <div id="productModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
           <div class="bg-white p-6 rounded shadow w-96">
             <h2 class="text-lg font-semibold mb-4" id="modalTitle">Add Product</h2>
-            <input type="text" id="productName" placeholder="Name" class="w-full mb-2 p-2 border rounded" />
-            <input type="number" id="productPrice" placeholder="Price" class="w-full mb-2 p-2 border rounded" />
-            <input type="number" id="productStock" placeholder="Stock" class="w-full mb-2 p-2 border rounded" />
-            <input type="text" id="productProductId" placeholder="Product ID" class="w-full mb-2 p-2 border rounded" />
-            <input type="text" id="productSubCategory" placeholder="Sub Category" class="w-full mb-2 p-2 border rounded" />
+            <input type="text" id="productName" placeholder="Product Name" class="w-full mb-2 p-2 border rounded" />
+            <div class="flex gap-2 mb-2">
+              <select id="productCategory" class="w-1/2 p-2 border rounded">
+                <option value="">Select Category</option>
+              </select>
+              <button id="addNewCategoryBtn" class="bg-gray-200 px-2 rounded">+ New</button>
+            </div>
+            <input type="text" id="newCategoryInput" placeholder="New Category" class="w-full mb-2 p-2 border rounded hidden" />
+            <div class="flex gap-2 mb-2">
+              <select id="productSubCategory" class="w-1/2 p-2 border rounded">
+                <option value="">Select Sub Category</option>
+              </select>
+              <button id="addNewSubCategoryBtn" class="bg-gray-200 px-2 rounded">+ New</button>
+            </div>
+            <input type="text" id="newSubCategoryInput" placeholder="New Sub Category" class="w-full mb-2 p-2 border rounded hidden" />
             <input type="text" id="productBrand" placeholder="Brand" class="w-full mb-2 p-2 border rounded" />
             <input type="text" id="productModelName" placeholder="Model Name" class="w-full mb-2 p-2 border rounded" />
+            <input type="number" id="productPrice" placeholder="Price" class="w-full mb-2 p-2 border rounded" />
             <input type="text" id="productUnit" placeholder="Unit" class="w-full mb-2 p-2 border rounded" />
-            <input type="text" id="productBarcodeValue" placeholder="Barcode Value" class="w-full mb-2 p-2 border rounded" />
-			<select id="productCategory" class="w-full mb-4 p-2 border rounded">
-  <option value="">Select Category</option>
-</select>
-			<input type="text" id="productHSN" placeholder="HSN Code (optional)" class="w-full mb-4 p-2 border rounded" />
-			<input type="number" id="productGST" placeholder="GST % (optional)" class="w-full mb-4 p-2 border rounded" />
+            <input type="number" id="productStock" placeholder="Stock" class="w-full mb-2 p-2 border rounded" />
+            <input type="text" id="productHSN" placeholder="HSN Code (optional)" class="w-full mb-2 p-2 border rounded" />
+            <input type="number" id="productGST" placeholder="GST % (optional)" class="w-full mb-2 p-2 border rounded" />
+            <input type="text" id="productBarcodeValue" placeholder="Barcode Value (auto)" class="w-full mb-2 p-2 border rounded bg-gray-100" readonly />
+            <input type="text" id="productProductId" placeholder="Product ID (auto)" class="w-full mb-4 p-2 border rounded bg-gray-100" readonly />
             <div class="flex justify-end space-x-2">
               <button id="cancelModalBtn" class="px-4 py-2 bg-gray-300 rounded">Cancel</button>
               <button id="saveProductBtn" class="px-4 py-2 bg-blue-600 text-white rounded">Save</button>
@@ -117,6 +138,9 @@ function setupProductView() {
   const cancelBtn = document.getElementById("cancelModalBtn");
   const searchInput = document.getElementById("searchInput");
   const productTable = document.getElementById("productTable");
+  const filterCategory = document.getElementById("filterCategory");
+  const filterSubCategory = document.getElementById("filterSubCategory");
+  const fixedCart = document.getElementById("fixed-cart-ui");
 
   // 🔽 Load category → HSN + GST mapping
   let categoryHSNMap = {};
@@ -135,40 +159,91 @@ function setupProductView() {
     })
     .catch((err) => console.error("❌ Failed to load category-HSN map:", err));
 
+  // Populate category dropdown
+  function populateCategoryDropdown(products) {
+    const categories = Array.from(new Set(products.map(p => p.category).filter(Boolean)));
+    filterCategory.innerHTML = '<option value="">All Categories</option>' +
+      categories.map(cat => `<option value="${cat}">${cat}</option>`).join("");
+  }
+
+  // Populate sub category dropdown based on selected category
+  function populateSubCategoryDropdown(products, selectedCategory) {
+    let subCategories = products
+      .filter(p => !selectedCategory || p.category === selectedCategory)
+      .map(p => p.sub_category)
+      .filter(Boolean);
+    subCategories = Array.from(new Set(subCategories));
+    filterSubCategory.innerHTML = '<option value="">All Sub Categories</option>' +
+      subCategories.map(sub => `<option value="${sub}">${sub}</option>`).join("");
+    filterSubCategory.disabled = subCategories.length === 0;
+  }
+
+  // Advanced filter logic
+  function applyFilters() {
+    const nameTerm = searchInput.value.trim().toLowerCase();
+    const selectedCategory = filterCategory.value;
+    const selectedSubCategory = filterSubCategory.value;
+    let filtered = allProducts;
+    if (nameTerm) {
+      filtered = filtered.filter(p => p.name.toLowerCase().includes(nameTerm));
+    }
+    if (selectedCategory) {
+      filtered = filtered.filter(p => p.category === selectedCategory);
+    }
+    if (selectedSubCategory) {
+      filtered = filtered.filter(p => p.sub_category === selectedSubCategory);
+    }
+    displayFilteredProducts(filtered);
+  }
+
+  // Initial population
   async function renderProducts() {
     allProducts = await window.api.getProducts();
-    displayFilteredProducts(allProducts);
+    populateCategoryDropdown(allProducts);
+    populateSubCategoryDropdown(allProducts, filterCategory.value);
+    applyFilters();
   }
 
   function displayFilteredProducts(products) {
     productTable.innerHTML = products.map(p => `
       <tr>
         <td class="p-2">${p.name}</td>
+        <td class="p-2">${p.category || ''}</td>
+        <td class="p-2">${p.sub_category || ''}</td>
+        <td class="p-2">${p.brand || ''}</td>
+        <td class="p-2">${p.model_name || ''}</td>
+        <td class="p-2">${p.unit || ''}</td>
         <td class="p-2">₹${p.price}</td>
         <td class="p-2">${p.stock}</td>
         <td class="p-2 space-x-2">
-          <button class="text-blue-600" onclick="editProduct(
-  ${p.id},
-  '${p.name.replace(/'/g, "\\'")}',
-  ${p.price},
-  ${p.stock},
-  '${p.hsn_code || ""}',
-  '${p.category || ""}',
-  ${p.gst_percent ?? 'null'}
-)">✏️</button>
+          <button class="text-blue-600" onclick="editProduct(${p.id}, '${p.name.replace(/'/g, "\\'")}', ${p.price}, ${p.stock}, '${p.hsn_code || ""}', '${p.category || ""}', ${p.gst_percent ?? 'null'})">✏️</button>
           <button class="text-red-600" onclick="deleteProduct(${p.id})">🗑️</button>
         </td>
       </tr>
     `).join("");
   }
+  window.deleteProduct = async function(id) {
+  const confirmed = confirm("Are you sure you want to delete?");
+  if (!confirmed) return;
+
+  const result = await window.api.deleteProduct(id);
+  if (result.success) {
+    showToast("🗑️ Product deleted");
+    renderProducts(); // ✅ This is the fix: force live refresh
+  } else {
+    showToast("❌ Delete failed");
+  }
+}
 
   renderProducts();
 
-  searchInput.addEventListener("input", () => {
-    const term = searchInput.value.trim().toLowerCase();
-    const filtered = allProducts.filter(p => p.name.toLowerCase().includes(term));
-    displayFilteredProducts(filtered);
+  searchInput.addEventListener("input", applyFilters);
+  filterCategory.addEventListener("change", () => {
+    populateSubCategoryDropdown(allProducts, filterCategory.value);
+    filterSubCategory.value = "";
+    applyFilters();
   });
+  filterSubCategory.addEventListener("change", applyFilters);
 
   const categorySelect = document.getElementById("productCategory");
   const hsnInput = document.getElementById("productHSN");
@@ -198,60 +273,118 @@ function setupProductView() {
     stockInput.value = "";
     modalTitle.textContent = "Add Product";
     modal.classList.remove("hidden");
+    if (fixedCart) fixedCart.style.display = "none";
   });
 
   cancelBtn.addEventListener("click", () => {
     modal.classList.add("hidden");
+    if (fixedCart) fixedCart.style.display = "block";
   });
 
-saveBtn.addEventListener("click", async () => {
-  const name = nameInput.value.trim();
-  const price = parseFloat(priceInput.value);
-  const stock = parseInt(stockInput.value);
-  const hsn = hsnInput.value.trim();
-  const gst = parseFloat(gstInput.value);
-  const product_id = productIdInput.value.trim();
-  const sub_category = subCategoryInput.value.trim();
-  const brand = brandInput.value.trim();
-  const model_name = modelNameInput.value.trim();
-  const unit = unitInput.value.trim();
-  const barcode_value = barcodeValueInput.value.trim();
+  saveBtn.addEventListener("click", async () => {
+    const name = nameInput.value.trim();
+    const price = parseFloat(priceInput.value);
+    const stock = parseInt(stockInput.value);
+    const hsn = hsnInput.value.trim();
+    const gst = parseFloat(gstInput.value);
+    const category = categorySelect.value.trim();
+    const product_id = productIdInput.value.trim();
+    const sub_category = subCategoryInput.value.trim();
+    const brand = brandInput.value.trim();
+    const model_name = modelNameInput.value.trim();
+    const unit = unitInput.value.trim();
+    const barcode_value = barcodeValueInput.value.trim();
 
-  if (!name || isNaN(price) || isNaN(stock)) {
-    showToast("⚠️ Please fill all fields correctly.");
-    return;
+    if (!name || isNaN(price) || isNaN(stock)) {
+      showToast("⚠️ Please fill all fields correctly.");
+      return;
+    }
+
+    const payload = {
+      name,
+      price,
+      stock,
+      category: category || null,
+      hsn_code: hsn || null,
+      gst_percent: isNaN(gst) ? null : gst,
+      product_id: product_id || null,
+      sub_category: sub_category || null,
+      brand: brand || null,
+      model_name: model_name || null,
+      unit: unit || null,
+      barcode_value: barcode_value || null
+    };
+
+    let result;
+    if (editingProductId) {
+      payload.id = editingProductId;
+      result = await window.api.updateProduct(payload);
+    } else {
+      result = await window.api.addProduct(payload);
+    }
+
+    if (result.success) {
+      showToast(editingProductId ? "✏️ Product updated!" : "✅ Product added!");
+      modal.classList.add("hidden");
+      renderProducts();
+    } else {
+      showToast("❌ Failed to save product.");
+    }
+  });
+
+  // Add New Category functionality
+  const addNewCategoryBtn = document.getElementById("addNewCategoryBtn");
+  const newCategoryInput = document.getElementById("newCategoryInput");
+  const addNewSubCategoryBtn = document.getElementById("addNewSubCategoryBtn");
+  const newSubCategoryInput = document.getElementById("newSubCategoryInput");
+
+  if (addNewCategoryBtn && newCategoryInput) {
+    addNewCategoryBtn.addEventListener("click", () => {
+      if (newCategoryInput.classList.contains("hidden")) {
+        newCategoryInput.classList.remove("hidden");
+        newCategoryInput.focus();
+        addNewCategoryBtn.textContent = "Save";
+      } else {
+        const newCategory = newCategoryInput.value.trim();
+        if (newCategory) {
+          // Add to category mapping if it doesn't exist
+          if (!categoryHSNMap[newCategory]) {
+            categoryHSNMap[newCategory] = { hsn: "", gst: "" };
+          }
+          
+          // Add to dropdown and select it
+          categorySelect.innerHTML += `<option value="${newCategory}">${newCategory}</option>`;
+          categorySelect.value = newCategory;
+          
+          // Trigger change event to populate HSN/GST if available
+          categorySelect.dispatchEvent(new Event('change'));
+          
+          newCategoryInput.classList.add("hidden");
+          newCategoryInput.value = "";
+          addNewCategoryBtn.textContent = "+ New";
+        }
+      }
+    });
   }
 
-  const payload = {
-    name,
-    price,
-    stock,
-    hsn_code: hsn || null,
-    gst_percent: isNaN(gst) ? null : gst,
-    product_id: product_id || null,
-    sub_category: sub_category || null,
-    brand: brand || null,
-    model_name: model_name || null,
-    unit: unit || null,
-    barcode_value: barcode_value || null
-  };
-
-  let result;
-  if (editingProductId) {
-    payload.id = editingProductId;
-    result = await window.api.updateProduct(payload);
-  } else {
-    result = await window.api.addProduct(payload);
+  if (addNewSubCategoryBtn && newSubCategoryInput) {
+    addNewSubCategoryBtn.addEventListener("click", () => {
+      if (newSubCategoryInput.classList.contains("hidden")) {
+        newSubCategoryInput.classList.remove("hidden");
+        newSubCategoryInput.focus();
+        addNewSubCategoryBtn.textContent = "Save";
+      } else {
+        const newSubCategory = newSubCategoryInput.value.trim();
+        if (newSubCategory) {
+          subCategoryInput.innerHTML += `<option value="${newSubCategory}">${newSubCategory}</option>`;
+          subCategoryInput.value = newSubCategory;
+          newSubCategoryInput.classList.add("hidden");
+          newSubCategoryInput.value = "";
+          addNewSubCategoryBtn.textContent = "+ New";
+        }
+      }
+    });
   }
-
-  if (result.success) {
-    showToast(editingProductId ? "✏️ Product updated!" : "✅ Product added!");
-    modal.classList.add("hidden");
-    renderProducts();
-  } else {
-    showToast("❌ Failed to save product.");
-  }
-});
 }
 
 function renderView(viewName) {
@@ -269,56 +402,72 @@ function renderView(viewName) {
   }
 
   if (viewName === "Sales") {
-	  // Pressing Enter in any input should trigger blur (and thereby onchange)
-document.getElementById("cartOverlay")?.addEventListener("keydown", (e) => {
-  if (e.key === "Enter" && e.target.matches("input")) {
-    e.preventDefault();
-    e.target.blur(); // Triggers onchange
-  }
-});
-document.getElementById("cartOverlay")?.addEventListener("input", (e) => {
-  const row = e.target.closest("tr[data-index]");
-  if (!row) return;
-
-  const inputs = row.querySelectorAll("input[type='number']");
-  const [rateInput, qtyInput, gstInput, discountInput] = [...inputs];
-
-  const rate = parseFloat(rateInput?.value?.trim() || "0") || 0;
-  const qty = parseFloat(qtyInput?.value?.trim() || "0") || 0;
-  const gst = parseFloat(gstInput?.value?.trim() || "0") || 0;
-  const discount = parseFloat(discountInput?.value?.trim() || "0") || 0;
-
-  const gross = rate * qty; // MRP x Qty stays fixed
-  const finalAmount = gross - discount; // Apply discount on MRP
-
-  const baseAmount = +(finalAmount / (1 + gst / 100)).toFixed(2); // Inclusive tax math
-  const taxAmount = +(finalAmount - baseAmount).toFixed(2);
-
-  const amtCell = row.querySelector("td:last-child");
-  if (amtCell) amtCell.textContent = `₹${finalAmount.toFixed(2)}`;
-
-  const index = parseInt(row.dataset.index);
-  if (!isNaN(index) && cart[index]) {
-    cart[index].price = rate;
-    cart[index].quantity = qty;
-    cart[index].gst_percent = gst;
-    cart[index].discount = discount;
-  }
-});
+    // Pressing Enter in any input should trigger blur (and thereby onchange)
+    const cartOverlay = document.getElementById("cartOverlay");
+    if (cartOverlay) {
+      // Remove any existing listeners to prevent duplicates
+      cartOverlay.removeEventListener("keydown", handleCartKeydown);
+      cartOverlay.removeEventListener("input", handleCartInput);
+      
+      // Add the listeners
+      cartOverlay.addEventListener("keydown", handleCartKeydown);
+      cartOverlay.addEventListener("input", handleCartInput);
+    }
+    
     salesProductList = document.getElementById("salesProductList");
     renderSalesProducts();
 
     const checkoutBtn = document.querySelector("#fixed-cart-ui #checkoutBtn");
-if (checkoutBtn) {
-  // 🛒 Step 2C — Show Cart Overlay on button click
-  checkoutBtn.addEventListener("click", () => {
-    const cartOverlay = document.getElementById("cartOverlay");
-    if (cartOverlay) {
-  cartOverlay.classList.remove("hidden");
-  renderCartOverlay();
-}
-  });
-}
+    if (checkoutBtn) {
+      // 🛒 Step 2C — Show Cart Overlay on button click
+      checkoutBtn.addEventListener("click", () => {
+        const cartOverlay = document.getElementById("cartOverlay");
+        if (cartOverlay) {
+          cartOverlay.classList.remove("hidden");
+          renderCartOverlay();
+        }
+      });
+    }
+  }
+
+  // Define the event handlers inside renderView to avoid global pollution
+  function handleCartKeydown(e) {
+    // Only handle Enter key in cart overlay inputs
+    if (e.key === "Enter" && e.target.matches("input") && e.target.closest("#cartOverlay")) {
+      e.preventDefault();
+      e.target.blur(); // Triggers onchange
+    }
+  }
+
+  function handleCartInput(e) {
+    // Only handle inputs within cart overlay
+    const row = e.target.closest("tr[data-index]");
+    if (!row || !e.target.closest("#cartOverlay")) return;
+
+    const inputs = row.querySelectorAll("input[type='number']");
+    const [rateInput, qtyInput, gstInput, discountInput] = [...inputs];
+
+    const rate = parseFloat(rateInput?.value?.trim() || "0") || 0;
+    const qty = parseFloat(qtyInput?.value?.trim() || "0") || 0;
+    const gst = parseFloat(gstInput?.value?.trim() || "0") || 0;
+    const discount = parseFloat(discountInput?.value?.trim() || "0") || 0;
+
+    const gross = rate * qty; // MRP x Qty stays fixed
+    const finalAmount = gross - discount; // Apply discount on MRP
+
+    const baseAmount = +(finalAmount / (1 + gst / 100)).toFixed(2); // Inclusive tax math
+    const taxAmount = +(finalAmount - baseAmount).toFixed(2);
+
+    const amtCell = row.querySelector("td:last-child");
+    if (amtCell) amtCell.textContent = `₹${finalAmount.toFixed(2)}`;
+
+    const index = parseInt(row.dataset.index);
+    if (!isNaN(index) && cart[index]) {
+      cart[index].price = rate;
+      cart[index].quantity = qty;
+      cart[index].gst_percent = gst;
+      cart[index].discount = discount;
+    }
   }
 
 if (viewName === "Settings") {
@@ -842,7 +991,14 @@ window.updateQty = function (id, newQty) {
   updateCartUI();
   updateCartSummaryFooter();  // ✅ live recalc
 };
-
+window.removeItem = function(id) {
+  const index = cart.findIndex(p => p.id === id);
+  if (index !== -1) {
+    cart.splice(index, 1);
+    updateCartUI();
+    updateCartSummaryFooter(); // ✅ live recalculation
+  }
+}
 window.addToCart = function (id, name, price) {
   const existing = cart.find(p => p.id === id);
   const product = allProducts.find(p => p.id === id);
@@ -915,14 +1071,43 @@ window.updateCartItem = function (id, field, value) {
     const nameInput = document.getElementById("productName");
     const priceInput = document.getElementById("productPrice");
     const stockInput = document.getElementById("productStock");
+    const categorySelect = document.getElementById("productCategory");
+    const subCategoryInput = document.getElementById("productSubCategory");
+    const brandInput = document.getElementById("productBrand");
+    const modelNameInput = document.getElementById("productModelName");
+    const unitInput = document.getElementById("productUnit");
+    const hsnInput = document.getElementById("productHSN");
+    const gstInput = document.getElementById("productGST");
+    const barcodeValueInput = document.getElementById("productBarcodeValue");
+    const productIdInput = document.getElementById("productProductId");
 
     editingProductId = id;
     nameInput.value = name;
     priceInput.value = price;
     stockInput.value = stock;
-	document.getElementById("productHSN").value = hsn_code || "";
-document.getElementById("productCategory").value = category || "";
-document.getElementById("productGST").value = gst_percent ?? "";
+    hsnInput.value = hsn_code || "";
+    gstInput.value = gst_percent ?? "";
+    
+    // Handle category selection properly
+    if (category && categorySelect) {
+      // Check if category exists in dropdown, if not add it
+      const categoryExists = Array.from(categorySelect.options).some(option => option.value === category);
+      if (!categoryExists && category) {
+        categorySelect.innerHTML += `<option value="${category}">${category}</option>`;
+      }
+      categorySelect.value = category;
+      // Trigger change event to populate HSN/GST
+      categorySelect.dispatchEvent(new Event('change'));
+    }
+    
+    // Set other fields if they exist
+    if (brandInput) brandInput.value = "";
+    if (modelNameInput) modelNameInput.value = "";
+    if (unitInput) unitInput.value = "";
+    if (subCategoryInput) subCategoryInput.value = "";
+    if (barcodeValueInput) barcodeValueInput.value = "";
+    if (productIdInput) productIdInput.value = "";
+    
     modalTitle.textContent = "Edit Product";
     modal.classList.remove("hidden");
     nameInput.focus();
@@ -1145,4 +1330,37 @@ function showToast(message) {
   toast.textContent = message;
   toast.classList.remove("hidden");
   setTimeout(() => toast.classList.add("hidden"), 2000);
+}
+
+// Ensure window.removeItem is defined and works
+if (!window.removeItem) {
+  window.removeItem = function(id) {
+    const idx = cart.findIndex(p => p.id === id);
+    if (idx !== -1) {
+      cart.splice(idx, 1);
+      updateCartUI();
+      renderCartOverlay();
+      updateCartSummaryFooter && updateCartSummaryFooter();
+    }
+  };
+}
+
+// Add missing deleteProduct function
+if (!window.deleteProduct) {
+  window.deleteProduct = async function(id) {
+    if (confirm("Are you sure you want to delete this product?")) {
+      try {
+        const result = await window.api.deleteProduct(id);
+        if (result.success) {
+          showToast("🗑️ Product deleted!");
+          renderProducts();
+        } else {
+          showToast("❌ Failed to delete product.");
+        }
+      } catch (error) {
+        console.error("Delete product error:", error);
+        showToast("❌ Error deleting product.");
+      }
+    }
+  };
 }
