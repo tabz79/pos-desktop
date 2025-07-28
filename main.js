@@ -1,5 +1,6 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
+const fs = require('fs');
 
 console.log("▶️ Electron app starting...");
 
@@ -209,10 +210,10 @@ ipcMain.handle("save-store-settings", (event, settings) => {
   console.log("📦 Incoming store settings to save:", settings);
   try {
     dbAPI.db.prepare(`
-      INSERT INTO store_settings (
+      INSERT INTO store_settings ( 
         id, store_name, store_subtitle, store_address,
         store_phone, store_gstin, store_footer, store_fssai
-      ) VALUES (
+      ) VALUES ( 
         1, @store_name, @store_subtitle, @store_address,
         @store_phone, @store_gstin, @store_footer, @store_fssai
       )
@@ -232,6 +233,19 @@ ipcMain.handle("save-store-settings", (event, settings) => {
     return { success: false, message: err.message || "Unknown error" };
   }
 });
+
+// ✅ CATEGORY MAP: Save updated category->HSN map
+ipcMain.handle("save-category-map", (event, data) => {
+  try {
+    const filePath = path.join(__dirname, 'category-hsn-map.json');
+    fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+    return { success: true };
+  } catch (err) {
+    console.error("❌ Failed to save category map:", err);
+    return { success: false, message: err.message || "Unknown error" };
+  }
+});
+
 // ✅ Generate and increment next invoice number
 ipcMain.handle("get-next-invoice-no", () => {
   try {

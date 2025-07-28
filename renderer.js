@@ -283,7 +283,7 @@ function setupProductView() {
         <td class="p-2">₹${p.price}</td>
         <td class="p-2">${p.stock}</td>
         <td class="p-2 space-x-2">
-          <button class="text-blue-600" onclick="editProduct(${p.id}, '${p.name.replace(/'/g, "\'")}', ${p.price}, ${p.stock}, '${p.hsn_code || ""}', '${p.category || ""}', ${p.gst_percent ?? 'null'})">✏️</button>
+          <button class="text-blue-600" onclick="editProduct(${p.id}, '${p.name.replace(/'/g, "\\'")}', ${p.price}, ${p.stock}, '${p.hsn_code || ""}', '${p.category || ""}', ${p.gst_percent ?? 'null'})">✏️</button>
           <button class="text-red-600" onclick="deleteProduct(${p.id})">🗑️</button>
         </td>
       </tr>
@@ -362,13 +362,20 @@ function setupProductView() {
 
   addBtn.addEventListener("click", () => {
     editingProductId = null;
+
+    // ✅ Populate sub-category dropdown with all existing sub-categories
+    const allSubCategories = Array.from(new Set(allProducts.map(p => p.sub_category).filter(Boolean)));
+    subCategoryInput.innerHTML = '<option value="">Select Sub Category</option>' +
+      allSubCategories.map(sub => `<option value="${sub}">${sub}</option>`).join('');
+
     // Clear all fields in the modal form
     const fieldsToClear = [
       nameInput, priceInput, stockInput, hsnInput, gstInput,
-      categorySelect, subCategoryInput, brandInput, modelNameInput,
-      unitInput, barcodeValueInput, productIdInput
+      brandInput, modelNameInput, unitInput, barcodeValueInput, productIdInput
     ];
     fieldsToClear.forEach(field => field.value = "");
+    categorySelect.value = "";
+    subCategoryInput.value = ""; // Also clear sub-category selection
     
     modalTitle.textContent = "Add Product";
     modal.classList.remove("hidden");
@@ -438,7 +445,7 @@ function setupProductView() {
   const newSubCategoryInput = document.getElementById("newSubCategoryInput");
 
   if (addNewCategoryBtn && newCategoryInput) {
-    addNewCategoryBtn.addEventListener("click", () => {
+    addNewCategoryBtn.addEventListener("click", async () => {
       if (newCategoryInput.classList.contains("hidden")) {
         newCategoryInput.classList.remove("hidden");
         newCategoryInput.focus();
@@ -449,10 +456,24 @@ function setupProductView() {
           // Add to category mapping if it doesn't exist
           if (!categoryHSNMap[newCategory]) {
             categoryHSNMap[newCategory] = { hsn: "", gst: "" };
+            
+            // ✅ Persist the updated map
+            const result = await window.api.saveCategoryMap(categoryHSNMap);
+            if (result.success) {
+              showToast(`✅ Category '${newCategory}' saved.`);
+            } else {
+              showToast(`❌ Failed to save category.`);
+              // Revert optimistic update if save fails
+              delete categoryHSNMap[newCategory]; 
+              return;
+            }
           }
           
           // Add to dropdown and select it
-          categorySelect.innerHTML += `<option value="${newCategory}">${newCategory}</option>`;
+          const optionExists = Array.from(categorySelect.options).some(opt => opt.value === newCategory);
+          if (!optionExists) {
+            categorySelect.innerHTML += `<option value="${newCategory}">${newCategory}</option>`;
+          }
           categorySelect.value = newCategory;
           
           // Trigger change event to populate HSN/GST if available
@@ -619,7 +640,7 @@ if (viewName === "Settings") {
     allProducts.forEach(p => {
       const card = document.createElement("div");
       card.className = "border rounded shadow p-4 flex flex-col justify-between";
-      const safeName = p.name.replace(/'/g, "\'");
+      const safeName = p.name.replace(/'/g, "\\'");
       card.innerHTML = `
         <div>
           <h3 class="text-lg font-semibold">${p.name}</h3>

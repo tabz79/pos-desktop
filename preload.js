@@ -13,5 +13,6 @@ contextBridge.exposeInMainWorld('api', {
   // 🏪 Store Settings
   getStoreSettings: () => ipcRenderer.invoke('get-store-settings'),
   saveStoreSettings: (settings) => ipcRenderer.invoke('save-store-settings', settings),
+  saveCategoryMap: (data) => ipcRenderer.invoke('save-category-map', data),
   getNextInvoiceNo: () => ipcRenderer.invoke('get-next-invoice-no')
 });
