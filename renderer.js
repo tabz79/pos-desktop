@@ -67,7 +67,7 @@ function parsePriceFromModel(model_name = '') {
 
 // ✅ POS Renderer Script with Live Stock Update, Quantity Control, Print Layout, and Business Profile Support
 
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
   const app = document.getElementById("app");
   let editingProductId = null;
   let allProducts = [];
@@ -76,6 +76,59 @@ document.addEventListener("DOMContentLoaded", () => {
   let salesProductList = null;
 
   const views = {
+    Dashboard: `
+      <div>
+        <h2 class="text-2xl font-bold mb-6">Dashboard</h2>
+        
+        <!-- Sales Stats -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+          <div class="bg-white p-4 rounded-lg shadow">
+            <h3 class="text-gray-500 text-sm font-medium">Today's Sales</h3>
+            <p id="today-sales" class="text-2xl font-semibold">₹0</p>
+          </div>
+          <div class="bg-white p-4 rounded-lg shadow">
+            <h3 class="text-gray-500 text-sm font-medium">This Month's Sales</h3>
+            <p id="month-sales" class="text-2xl font-semibold">₹0</p>
+          </div>
+          <div class="bg-white p-4 rounded-lg shadow">
+            <h3 class="text-gray-500 text-sm font-medium">This Year's Sales</h3>
+            <p id="year-sales" class="text-2xl font-semibold">₹0</p>
+          </div>
+        </div>
+
+        <!-- Chart and Top Products -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+          <div class="lg:col-span-2 bg-white p-4 rounded-lg shadow">
+            <h3 class="text-lg font-semibold mb-2">Monthly Sales</h3>
+            <canvas id="monthly-sales-chart"></canvas>
+          </div>
+          <div class="bg-white p-4 rounded-lg shadow">
+            <h3 class="text-lg font-semibold mb-2">Top Selling Products</h3>
+            <canvas id="top-products-chart"></canvas>
+          </div>
+        </div>
+
+        <!-- Recent Invoices -->
+        <div class="bg-white p-4 rounded-lg shadow">
+          <div class="flex justify-between items-center mb-2">
+            <h3 class="text-lg font-semibold">Recent Invoices</h3>
+            <button id="view-all-invoices-btn" class="text-blue-600 hover:underline">View All →</button>
+          </div>
+          <table class="w-full text-sm text-left">
+            <thead>
+              <tr class="bg-gray-100">
+                <th class="p-2">Invoice #</th>
+                <th class="p-2">Customer</th>
+                <th class="p-2">Date</th>
+                <th class="p-2 text-right">Total</th>
+                <th class="p-2 text-center">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="recent-invoices"></tbody>
+          </table>
+        </div>
+      </div>
+    `,
     Products: `
       <div>
         <div class="flex justify-between items-center mb-4">
@@ -146,16 +199,47 @@ document.addEventListener("DOMContentLoaded", () => {
         </div>
       </div>
     `,
-Sales: `
-  <div>
-    <h2 class="text-xl font-bold mb-4">Sales</h2>
-    <div id="salesProductList" class="grid grid-cols-2 gap-4 mb-6"></div>
-  </div>
-`,
-    Reports: `
+    Sales: `
       <div>
-        <h2 class="text-xl font-bold mb-2">Reports</h2>
-        <p class="text-gray-700">Monthly report goes here...</p>
+        <h2 class="text-xl font-bold mb-4">Sales</h2>
+        <div id="salesProductList" class="grid grid-cols-2 gap-4 mb-6"></div>
+      </div>
+    `,
+    InvoiceHistory: `
+      <div>
+        <h2 class="text-2xl font-bold mb-6">Invoice History</h2>
+        <div class="bg-white p-4 rounded-lg shadow mb-6">
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div>
+              <label for="start-date" class="block text-sm font-medium">Start Date</label>
+              <input type="date" id="start-date" class="w-full border rounded px-2 py-1">
+            </div>
+            <div>
+              <label for="end-date" class="block text-sm font-medium">End Date</label>
+              <input type="date" id="end-date" class="w-full border rounded px-2 py-1">
+            </div>
+            <div>
+              <label for="invoice-search" class="block text-sm font-medium">Search</label>
+              <input type="text" id="invoice-search" placeholder="Invoice # or Customer" class="w-full border rounded px-2 py-1">
+            </div>
+            <div class="flex items-end">
+              <button id="filter-invoices-btn" class="bg-blue-600 text-white px-4 py-2 rounded w-full">Filter</button>
+            </div>
+          </div>
+        </div>
+        <table class="w-full bg-white shadow rounded text-sm text-left">
+          <thead>
+            <tr class="bg-gray-100">
+              <th class="p-2">Invoice #</th>
+              <th class="p-2">Customer</th>
+              <th class="p-2">Date</th>
+              <th class="p-2 text-right">Total</th>
+              <th class="p-2 text-center">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="invoice-history-table"></tbody>
+        </table>
+        <div id="pagination-controls" class="flex justify-between items-center mt-4"></div>
       </div>
     `,
     Settings: `
@@ -193,6 +277,158 @@ Sales: `
       </div>
     `
   };
+
+async function setupDashboardView() {
+  const stats = await window.api.getDashboardStats();
+  if (stats) {
+    document.getElementById('today-sales').textContent = `₹${stats.today_sales.toFixed(2)}`;
+    document.getElementById('month-sales').textContent = `₹${stats.month_sales.toFixed(2)}`;
+    document.getElementById('year-sales').textContent = `₹${stats.year_sales.toFixed(2)}`;
+
+    console.log('Top Products Data:', stats.top_products); // Temporary log for debugging
+    const topProductsChartCtx = document.getElementById('top-products-chart').getContext('2d');
+    new Chart(topProductsChartCtx, {
+      type: 'bar',
+      data: {
+        labels: stats.top_products.map(p => p.name),
+        datasets: [{
+          label: 'Quantity Sold',
+          data: stats.top_products.map(p => p.total_quantity),
+          backgroundColor: 'rgba(75, 192, 192, 0.6)',
+          borderColor: 'rgba(75, 192, 192, 1)',
+          borderWidth: 1
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        scales: {
+          x: {
+            beginAtZero: true
+          }
+        }
+      }
+    });
+
+    const ctx = document.getElementById('monthly-sales-chart').getContext('2d');
+    new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: stats.monthly_sales_chart.map(d => d.month),
+        datasets: [{
+          label: 'Monthly Sales',
+          data: stats.monthly_sales_chart.map(d => d.total_sales),
+          backgroundColor: 'rgba(54, 162, 235, 0.6)',
+          borderColor: 'rgba(54, 162, 235, 1)',
+          borderWidth: 1
+        }]
+      },
+      options: {
+        scales: {
+          y: {
+            beginAtZero: true
+          }
+        }
+      }
+    });
+  }
+
+  const invoices = await window.api.getRecentInvoices();
+  const recentInvoicesTable = document.getElementById('recent-invoices');
+  recentInvoicesTable.innerHTML = invoices.map(inv => `
+    <tr class="border-b">
+      <td class="p-2">${inv.invoice_no}</td>
+      <td class="p-2">${inv.customer_name || 'N/A'}</td>
+      <td class="p-2">${new Date(inv.timestamp).toLocaleDateString()}</td>
+      <td class="p-2 text-right">₹${inv.total.toFixed(2)}</td>
+      <td class="p-2 text-center">
+        <button class="text-blue-600" onclick="viewInvoice(${inv.id})">View</button>
+      </td>
+    </tr>
+  `).join('');
+
+  document.getElementById('view-all-invoices-btn').addEventListener('click', () => {
+    renderView('InvoiceHistory');
+  });
+}
+
+async function setupInvoiceHistoryView() {
+  let currentPage = 1;
+  const limit = 15;
+
+  const startDateInput = document.getElementById('start-date');
+  const endDateInput = document.getElementById('end-date');
+  const searchInput = document.getElementById('invoice-search');
+  const filterBtn = document.getElementById('filter-invoices-btn');
+  const invoiceTable = document.getElementById('invoice-history-table');
+  const paginationControls = document.getElementById('pagination-controls');
+
+  async function fetchAndRenderInvoices() {
+    const options = {
+      page: currentPage,
+      limit,
+      startDate: startDateInput.value,
+      endDate: endDateInput.value,
+      searchQuery: searchInput.value
+    };
+    const { data, total } = await window.api.getInvoices(options);
+
+    invoiceTable.innerHTML = data.map(inv => `
+      <tr class="border-b">
+        <td class="p-2">${inv.invoice_no}</td>
+        <td class="p-2">${inv.customer_name || 'N/A'}</td>
+        <td class="p-2">${new Date(inv.timestamp).toLocaleDateString()}</td>
+        <td class="p-2 text-right">₹${inv.total.toFixed(2)}</td>
+        <td class="p-2 text-center">
+          <button class="text-blue-600" onclick="viewInvoice(${inv.id})">View</button>
+        </td>
+      </tr>
+    `).join('');
+
+    renderPagination(total);
+  }
+
+  function renderPagination(total) {
+    const totalPages = Math.ceil(total / limit);
+    paginationControls.innerHTML = `
+      <div>
+        <button id="prev-page" class="bg-gray-300 px-4 py-2 rounded" ${currentPage === 1 ? 'disabled' : ''}>Previous</button>
+        <span class="px-4">Page ${currentPage} of ${totalPages}</span>
+        <button id="next-page" class="bg-gray-300 px-4 py-2 rounded" ${currentPage === totalPages ? 'disabled' : ''}>Next</button>
+      </div>
+      <div>
+        <span>Total Invoices: ${total}</span>
+      </div>
+    `;
+
+    document.getElementById('prev-page')?.addEventListener('click', () => {
+      if (currentPage > 1) {
+        currentPage--;
+        fetchAndRenderInvoices();
+      }
+    });
+
+    document.getElementById('next-page')?.addEventListener('click', () => {
+      if (currentPage < totalPages) {
+        currentPage++;
+        fetchAndRenderInvoices();
+      }
+    });
+  }
+
+  filterBtn.addEventListener('click', () => {
+    currentPage = 1;
+    fetchAndRenderInvoices();
+  });
+
+  fetchAndRenderInvoices();
+}
+
+window.viewInvoice = async function(id) {
+  const invoice = await window.api.getInvoiceDetails(id);
+  if (invoice) {
+    showInvoice(invoice.items);
+  }
+}
 
 function setupProductView() {
   const addBtn = document.getElementById("addProductBtn");
@@ -283,7 +519,7 @@ function setupProductView() {
         <td class="p-2">₹${p.price}</td>
         <td class="p-2">${p.stock}</td>
         <td class="p-2 space-x-2">
-          <button class="text-blue-600" onclick="editProduct(${p.id}, '${p.name.replace(/'/g, "\\'")}', ${p.price}, ${p.stock}, '${p.hsn_code || ""}', '${p.category || ""}', ${p.gst_percent ?? 'null'})">✏️</button>
+          <button class="text-blue-600" onclick="editProduct(${p.id}, '${p.name.replace(/'/g, "\'")}', ${p.price}, ${p.stock}, '${p.hsn_code || ""}', '${p.category || ""}', ${p.gst_percent ?? 'null'})">✏️</button>
           <button class="text-red-600" onclick="deleteProduct(${p.id})">🗑️</button>
         </td>
       </tr>
@@ -507,7 +743,7 @@ function setupProductView() {
   }
 }
 
-function renderView(viewName) {
+async function renderView(viewName) {
   app.innerHTML = views[viewName] || `<p>Unknown view: ${viewName}</p>`;
 
   document.querySelectorAll(".nav-btn").forEach((btn) => {
@@ -517,8 +753,14 @@ function renderView(viewName) {
     }
   });
 
+  if (viewName === "Dashboard") {
+    await setupDashboardView();
+  }
   if (viewName === "Products") {
-    setupProductView();
+    await setupProductView();
+  }
+  if (viewName === "InvoiceHistory") {
+    await setupInvoiceHistoryView();
   }
 
   if (viewName === "Sales") {
@@ -535,16 +777,16 @@ function renderView(viewName) {
     }
     
     salesProductList = document.getElementById("salesProductList");
-    renderSalesProducts();
+    await renderSalesProducts();
 
     const checkoutBtn = document.querySelector("#fixed-cart-ui #checkoutBtn");
     if (checkoutBtn) {
       // 🛒 Step 2C — Show Cart Overlay on button click
-      checkoutBtn.addEventListener("click", () => {
+      checkoutBtn.addEventListener("click", async () => {
         const cartOverlay = document.getElementById("cartOverlay");
         if (cartOverlay) {
           cartOverlay.classList.remove("hidden");
-          renderCartOverlay();
+          await renderCartOverlay(); // Await the async function call
         }
       });
     }
@@ -640,7 +882,7 @@ if (viewName === "Settings") {
     allProducts.forEach(p => {
       const card = document.createElement("div");
       card.className = "border rounded shadow p-4 flex flex-col justify-between";
-      const safeName = p.name.replace(/'/g, "\\'");
+      const safeName = p.name.replace(/'/g, "'");
       card.innerHTML = `
         <div>
           <h3 class="text-lg font-semibold">${p.name}</h3>
@@ -655,10 +897,10 @@ if (viewName === "Settings") {
       `;
       salesProductList.appendChild(card);
     });
-    updateCartUI();
+    await updateCartUI();
   }
 
-function updateCartUI() {
+async function updateCartUI() {
   const cartList = document.querySelector("#fixed-cart-ui #cartList");
   const checkoutBtn = document.querySelector("#fixed-cart-ui #checkoutBtn");
   if (!cartList) return;
@@ -741,9 +983,7 @@ if (mainContent) {
   mainContent.style.paddingBottom = cartHeight + "px";
 }
 }
-function renderCartOverlay() {
-// ✅ Generate invoice number once when cart opens
-(async () => {
+async function renderCartOverlay() {
   const invoiceInput = document.getElementById("customerInvoiceNo");
   if (invoiceInput) {
     try {
@@ -759,7 +999,6 @@ function renderCartOverlay() {
       invoiceInput.value = "INV_ERR";
     }
   }
-})();
 
   // ✅ DO NOT set invoiceInput.value again here
 
@@ -830,9 +1069,10 @@ function renderCartOverlay() {
       }
 
       const itemsWithAmount = cart.map(item => {
+        const product = allProducts.find(p => p.id === item.id); // Find the product here
         const rate = item.price ?? 0;
         const qty = item.quantity ?? 1;
-        const gst = item.gst_percent ?? 0;
+        const gst = item.gst_percent ?? product?.gst_percent ?? 0; // Use optional chaining for product
         const discount = item.discount ?? 0;
 
         const totalMRP = rate * qty;
@@ -844,6 +1084,7 @@ function renderCartOverlay() {
 
         return {
           ...item,
+          product_id: product?.product_id || null, // Pass the generated product_id string
           final_amount: parseFloat(finalAmount.toFixed(2)),
         };
       });
@@ -1065,7 +1306,7 @@ setText("footerTotalDiscount", `− ₹${totalDiscount.toFixed(2)}`);
 setText("footerPayable", `₹${postTotal.toFixed(2)}`);
 }
 
-window.increaseQty = function (id) {
+window.increaseQty = async function (id) {
   const item = cart.find(p => p.id === id);
   const stockProduct = allProducts.find(p => p.id === id);
   if (!item || !stockProduct) return;
@@ -1074,11 +1315,11 @@ window.increaseQty = function (id) {
     return;
   }
   item.quantity += 1;
-  updateCartUI();
+  await updateCartUI();
   updateCartSummaryFooter();  // ✅ live recalc
 };
 
-window.decreaseQty = function (id) {
+window.decreaseQty = async function (id) {
   const index = cart.findIndex(p => p.id === id);
   if (index !== -1) {
     if (cart[index].quantity > 1) {
@@ -1086,12 +1327,12 @@ window.decreaseQty = function (id) {
     } else {
       cart.splice(index, 1);
     }
-    updateCartUI();
+    await updateCartUI();
     updateCartSummaryFooter();  // ✅ live recalc
   }
 };
 
-window.updateQty = function (id, newQty) {
+window.updateQty = async function (id, newQty) {
   newQty = parseInt(newQty);
   const item = cart.find(p => p.id === id);
   const stockProduct = allProducts.find(p => p.id === id);
@@ -1108,18 +1349,18 @@ window.updateQty = function (id, newQty) {
   }
 
   item.quantity = newQty;
-  updateCartUI();
+  await updateCartUI();
   updateCartSummaryFooter();  // ✅ live recalc
 };
-window.removeItem = function(id) {
+window.removeItem = async function(id) {
   const index = cart.findIndex(p => p.id === id);
   if (index !== -1) {
     cart.splice(index, 1);
-    updateCartUI();
+    await updateCartUI();
     updateCartSummaryFooter(); // ✅ live recalculation
   }
 }
-window.addToCart = function (id, name, price) {
+window.addToCart = async function (id, name, price) {
   const existing = cart.find(p => p.id === id);
   const product = allProducts.find(p => p.id === id);
 
@@ -1146,7 +1387,7 @@ window.addToCart = function (id, name, price) {
   }
 
   showToast(`🛒 ${name} added`);
-  updateCartUI();
+  await updateCartUI();
   updateCartSummaryFooter();  // ✅ live recalc
   const previewBtn = document.getElementById("previewInvoiceBtn");
 if (previewBtn) {
@@ -1159,7 +1400,7 @@ if (previewBtn) {
   });
 }
 };
-window.updateCartItem = function (id, field, value) {
+window.updateCartItem = async function (id, field, value) {
   const item = cart.find(p => p.id === id);
   if (!item) return;
 
@@ -1181,7 +1422,7 @@ window.updateCartItem = function (id, field, value) {
       break;
   }
 
-  updateCartUI();
+  await updateCartUI();
   renderCartOverlay(); // ✅ Will update summary footer too
 };
 
@@ -1234,14 +1475,14 @@ window.updateCartItem = function (id, field, value) {
   };
 
 document.querySelectorAll(".nav-btn").forEach((btn) => {
-  btn.addEventListener("click", () => {
-    const tab = btn.innerText.trim();
+  btn.addEventListener("click", async () => {
+    const tab = btn.innerText.trim().replace(' ', '');
     console.log("🧭 Switching to:", tab);
-    renderView(tab);
+    await renderView(tab);
   });
 });
 
-renderView("Products"); // Initial load
+  await renderView("Dashboard"); // Initial load
 });
 
 // 🧾 Invoice print layout support

@@ -14,5 +14,11 @@ contextBridge.exposeInMainWorld('api', {
   getStoreSettings: () => ipcRenderer.invoke('get-store-settings'),
   saveStoreSettings: (settings) => ipcRenderer.invoke('save-store-settings', settings),
   saveCategoryMap: (data) => ipcRenderer.invoke('save-category-map', data),
-  getNextInvoiceNo: () => ipcRenderer.invoke('get-next-invoice-no')
+  getNextInvoiceNo: () => ipcRenderer.invoke('get-next-invoice-no'),
+
+  // 📊 Dashboard & Reports
+  getDashboardStats: () => ipcRenderer.invoke('get-dashboard-stats'),
+  getRecentInvoices: () => ipcRenderer.invoke('get-recent-invoices'),
+  getInvoiceDetails: (id) => ipcRenderer.invoke('get-invoice-details', id),
+  getInvoices: (options) => ipcRenderer.invoke('get-invoices', options)
 });

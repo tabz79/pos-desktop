@@ -105,19 +105,16 @@ try {
 
   // ✅ Recreate sale_items with full GST structure
   try {
-    const existing = db.prepare(`SELECT sql FROM sqlite_master WHERE type='table' AND name='sale_items'`).get();
-    if (existing) {
-      console.log("♻️ Dropping old sale_items table...");
-      db.exec('PRAGMA foreign_keys = OFF');
-      db.prepare(`DROP TABLE IF EXISTS sale_items`).run();
-      db.exec('PRAGMA foreign_keys = ON');
-    }
+    console.log("♻️ Forcing recreation of sale_items table...");
+    db.exec('PRAGMA foreign_keys = OFF');
+    db.prepare(`DROP TABLE IF EXISTS sale_items`).run();
+    db.exec('PRAGMA foreign_keys = ON');
 
     db.prepare(`
       CREATE TABLE IF NOT EXISTS sale_items (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         sale_id INTEGER NOT NULL,
-        product_id INTEGER,
+        product_id TEXT, 
         name TEXT NOT NULL,
         price REAL NOT NULL,
         quantity INTEGER NOT NULL,
@@ -229,19 +226,32 @@ function updateProduct(product) {
 // ✅ Save a full sale (sale + items with GST extracted from MRP)
 function saveSale(saleData) {
   try {
-const {
-  invoice_no,
-  timestamp, // ✅ Correct key passed from main.js
-  payment_method,
-  customer_name,
-  customer_phone,
-  customer_gstin,
-  items
-} = saleData;
+    const {
+      invoice_no,
+      timestamp,
+      payment_method,
+      customer_name,
+      customer_phone,
+      customer_gstin,
+      items
+    } = saleData;
 
     if (!Array.isArray(items) || items.length === 0) {
       throw new Error("Sale must include items");
     }
+
+    // Get current counter value and increment it within the transaction
+    let counterRow = db.prepare("SELECT current_number FROM invoice_counter WHERE id = 1").get();
+    if (!counterRow) {
+      db.prepare("INSERT INTO invoice_counter (id, current_number) VALUES (1, 0)").run();
+      counterRow = { current_number: 0 };
+    }
+    const nextSerial = counterRow.current_number + 1;
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const date = String(now.getDate()).padStart(2, '0');
+    const finalInvoiceNo = `INV${year}${month}${date}${String(nextSerial).padStart(4, '0')}`;
 
     const enrichedItems = [];
 
@@ -293,7 +303,7 @@ const {
     const saleInfo = insertSale.run(
       total,
       timestamp,
-      invoice_no,
+      finalInvoiceNo, // Use the newly generated invoice number
       payment_method,
       customer_name || null,
       customer_phone || null,
@@ -314,7 +324,7 @@ const {
       for (const i of items) {
         insertItem.run(
           saleId,
-          i.id || null,
+          i.product_id || null, // Use the generated product_id string
           i.name,
           i.price,
           i.quantity,
@@ -334,16 +344,131 @@ const {
     });
 
     insertMany(enrichedItems);
+
+    // 🔐 Increment the counter ONLY after successful sale
+    db.prepare("UPDATE invoice_counter SET current_number = ? WHERE id = 1").run(nextSerial);
+
     return {
-  success: true,
-  sale_id: saleId,
-  invoice_no: invoice_no  // ✅ Send it back!
-};
+      success: true,
+      sale_id: saleId,
+      invoice_no: finalInvoiceNo // Send back the final generated invoice number
+    };
   } catch (err) {
     console.error("❌ Failed to save sale:", err);
     return { success: false, message: 'Error saving sale' };
   }
 }
+
+// --- DASHBOARD & REPORTING --- 
+
+function getDashboardStats() {
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const month = today.slice(0, 7);
+    const year = today.slice(0, 4);
+
+    const todaySales = db.prepare(`SELECT SUM(total) as total FROM sales WHERE date(timestamp) = ?`).get(today)?.total || 0;
+    const monthSales = db.prepare(`SELECT SUM(total) as total FROM sales WHERE strftime('%Y-%m', timestamp) = ?`).get(month)?.total || 0;
+    const yearSales = db.prepare(`SELECT SUM(total) as total FROM sales WHERE strftime('%Y', timestamp) = ?`).get(year)?.total || 0;
+
+    const topProducts = db.prepare(`
+      SELECT p.name, SUM(si.quantity) as total_quantity
+      FROM sale_items si
+      JOIN products p ON si.product_id = p.product_id
+      GROUP BY si.product_id
+      ORDER BY total_quantity DESC
+      LIMIT 5
+    `).all();
+
+    const monthlySalesChart = db.prepare(`
+      SELECT strftime('%Y-%m', timestamp) as month, SUM(total) as total_sales
+      FROM sales
+      WHERE strftime('%Y', timestamp) = ?
+      GROUP BY month
+      ORDER BY month
+    `).all(year);
+
+    return {
+      today_sales: todaySales,
+      month_sales: monthSales,
+      year_sales: yearSales,
+      top_products: topProducts,
+      monthly_sales_chart: monthlySalesChart
+    };
+  } catch (err) {
+    console.error("❌ Failed to get dashboard stats:", err);
+    return null;
+  }
+}
+
+function getRecentInvoices() {
+  try {
+    return db.prepare(`
+      SELECT id, invoice_no, customer_name, total, timestamp
+      FROM sales
+      ORDER BY timestamp DESC
+      LIMIT 10
+    `).all();
+  } catch (err) {
+    console.error("❌ Failed to get recent invoices:", err);
+    return [];
+  }
+}
+
+function getInvoiceDetails(id) {
+  try {
+    const sale = db.prepare(`SELECT * FROM sales WHERE id = ?`).get(id);
+    if (!sale) return null;
+
+    const items = db.prepare(`SELECT * FROM sale_items WHERE sale_id = ?`).all(id);
+    return { ...sale, items };
+  } catch (err) {
+    console.error("❌ Failed to get invoice details:", err);
+    return null;
+  }
+}
+
+function getInvoices({ page = 1, limit = 15, startDate, endDate, searchQuery = '' }) {
+  try {
+    const offset = (page - 1) * limit;
+    let whereClauses = [];
+    let params = [];
+
+    if (startDate) {
+      whereClauses.push(`date(timestamp) >= ?`);
+      params.push(startDate);
+    }
+    if (endDate) {
+      whereClauses.push(`date(timestamp) <= ?`);
+      params.push(endDate);
+    }
+    if (searchQuery) {
+      whereClauses.push(`(invoice_no LIKE ? OR customer_name LIKE ?)`)
+      params.push(`%${searchQuery}%`, `%${searchQuery}%`);
+    }
+
+    const where = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+
+    const countStmt = db.prepare(`SELECT COUNT(*) as total FROM sales ${where}`);
+    const { total } = countStmt.get(...params);
+
+    const dataStmt = db.prepare(`
+      SELECT id, invoice_no, customer_name, total, timestamp
+      FROM sales
+      ${where}
+      ORDER BY timestamp DESC
+      LIMIT ? OFFSET ?
+    `);
+    const data = dataStmt.all(...params, limit, offset);
+
+    return { data, total, page, limit };
+
+  } catch (err) {
+    console.error("❌ Failed to get invoices:", err);
+    return { data: [], total: 0, page: 1, limit };
+  }
+}
+
 // 🧠 Safe schema patch for store_settings (runs only if columns are missing)
 try {
   const storeCols = db.prepare(`PRAGMA table_info(store_settings)`).all().map(c => c.name);
@@ -421,6 +546,9 @@ module.exports = {
   updateProduct,
   saveSale,
   saveStoreSettings,
-  getStoreSettings
+  getStoreSettings,
+  getDashboardStats,
+  getRecentInvoices,
+  getInvoiceDetails,
+  getInvoices
 };
-

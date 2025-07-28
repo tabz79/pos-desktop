@@ -145,16 +145,6 @@ dbAPI.db.prepare(`UPDATE invoice_counter SET current_number = ? WHERE id = 1`).r
 
 if (result.success) {
   console.log("✅ Sale saved successfully. Sale ID:", result.sale_id);
-
-  // 🔧 Sync invoice_counter if needed
-  const serialPart = parseInt(invoice_no.slice(-4), 10);
-  const existingCounter = dbAPI.db.prepare(`SELECT current_number FROM invoice_counter WHERE id = 1`).get();
-
-  if (existingCounter && serialPart > existingCounter.current_number) {
-    dbAPI.db.prepare(`UPDATE invoice_counter SET current_number = ? WHERE id = 1`).run(serialPart);
-    console.log(`🔼 Synced invoice_counter to ${serialPart}`);
-  }
-
 } else {
   console.error("❌ Failed to save sale:", result.message);
 }
@@ -249,28 +239,34 @@ ipcMain.handle("save-category-map", (event, data) => {
 // ✅ Generate and increment next invoice number
 ipcMain.handle("get-next-invoice-no", () => {
   try {
-    const now = new Date();
-    const yyyymmdd = now.toISOString().slice(0, 10).replace(/-/g, ""); // "20250727"
-
-    // Get current number
     let row = dbAPI.db.prepare("SELECT current_number FROM invoice_counter WHERE id = 1").get();
 
     if (!row) {
-      // First-time setup
-      dbAPI.db.prepare("INSERT INTO invoice_counter (id, current_number) VALUES (1, 1)").run();
-      row = { current_number: 1 };
+      dbAPI.db.prepare("INSERT INTO invoice_counter (id, current_number) VALUES (1, 0)").run();
+      row = { current_number: 0 };
     }
-
-    const nextSerial = row.current_number + 1;
-
-    // Persist it immediately to avoid reuse
-    dbAPI.db.prepare("UPDATE invoice_counter SET current_number = ? WHERE id = 1").run(nextSerial);
-
-    const invoiceNo = `INV${yyyymmdd}${String(nextSerial).padStart(4, "0")}`;
-    return invoiceNo;
+    // Just return the next number, do not increment here
+    return row.current_number + 1;
   } catch (err) {
-    console.error("❌ Failed to generate invoice number:", err.message);
+    console.error("❌ Failed to get next invoice number:", err.message);
     return null;
   }
+});
+
+// --- DASHBOARD & REPORTS ---
+ipcMain.handle('get-dashboard-stats', async () => {
+  return dbAPI.getDashboardStats();
+});
+
+ipcMain.handle('get-recent-invoices', async () => {
+  return dbAPI.getRecentInvoices();
+});
+
+ipcMain.handle('get-invoice-details', async (event, id) => {
+  return dbAPI.getInvoiceDetails(id);
+});
+
+ipcMain.handle('get-invoices', async (event, options) => {
+  return dbAPI.getInvoices(options);
 });
 }
