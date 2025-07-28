@@ -134,14 +134,14 @@ document.addEventListener("DOMContentLoaded", async () => {
         <div class="flex justify-between items-center mb-4">
           <h2 class="text-xl font-bold">Product List</h2>
           <div class="flex gap-2">
-            <input type="text" id="searchInput" placeholder="Search by name..." class="border rounded px-2 py-1" />
-            <select id="filterCategory" class="border rounded px-2 py-1">
+            <input type="text" id="searchInput" placeholder="Search by name..." class="border border-secondary-light rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary" />
+            <select id="filterCategory" class="border border-secondary-light rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary">
               <option value="">All Categories</option>
             </select>
-            <select id="filterSubCategory" class="border rounded px-2 py-1" disabled>
+            <select id="filterSubCategory" class="border border-secondary-light rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary" disabled>
               <option value="">All Sub Categories</option>
             </select>
-            <button id="addProductBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded">
+            <button id="addProductBtn" class="bg-primary hover:bg-primary-dark text-white px-4 py-2 rounded transition-colors duration-200">
               + Add Product
             </button>
           </div>
@@ -167,33 +167,33 @@ document.addEventListener("DOMContentLoaded", async () => {
         <div id="productModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
           <div class="bg-white p-6 rounded shadow w-96">
             <h2 class="text-lg font-semibold mb-4" id="modalTitle">Add Product</h2>
-            <input type="text" id="productName" placeholder="Product Name" class="w-full mb-2 p-2 border rounded" />
+            <input type="text" id="productName" placeholder="Product Name" class="w-full mb-2 p-2 border border-secondary-light rounded focus:outline-none focus:ring-2 focus:ring-primary" />
             <div class="flex gap-2 mb-2">
-              <select id="productCategory" class="w-1/2 p-2 border rounded">
+              <select id="productCategory" class="w-1/2 p-2 border border-secondary-light rounded focus:outline-none focus:ring-2 focus:ring-primary">
                 <option value="">Select Category</option>
               </select>
-              <button id="addNewCategoryBtn" class="bg-gray-200 px-2 rounded">+ New</button>
+              <button id="addNewCategoryBtn" class="bg-secondary-light text-secondary-dark px-2 rounded hover:bg-secondary-dark hover:text-white transition-colors duration-200">+ New</button>
             </div>
-            <input type="text" id="newCategoryInput" placeholder="New Category" class="w-full mb-2 p-2 border rounded hidden" />
+            <input type="text" id="newCategoryInput" placeholder="New Category" class="w-full mb-2 p-2 border border-secondary-light rounded focus:outline-none focus:ring-2 focus:ring-primary hidden" />
             <div class="flex gap-2 mb-2">
-              <select id="productSubCategory" class="w-1/2 p-2 border rounded">
+              <select id="productSubCategory" class="w-1/2 p-2 border border-secondary-light rounded focus:outline-none focus:ring-2 focus:ring-primary">
                 <option value="">Select Sub Category</option>
               </select>
-              <button id="addNewSubCategoryBtn" class="bg-gray-200 px-2 rounded">+ New</button>
+              <button id="addNewSubCategoryBtn" class="bg-secondary-light text-secondary-dark px-2 rounded hover:bg-secondary-dark hover:text-white transition-colors duration-200">+ New</button>
             </div>
-            <input type="text" id="newSubCategoryInput" placeholder="New Sub Category" class="w-full mb-2 p-2 border rounded hidden" />
-            <input type="text" id="productBrand" placeholder="Brand" class="w-full mb-2 p-2 border rounded" />
-            <input type="text" id="productModelName" placeholder="Model Name" class="w-full mb-2 p-2 border rounded" />
-            <input type="number" id="productPrice" placeholder="Price" class="w-full mb-2 p-2 border rounded" />
-            <input type="text" id="productUnit" placeholder="Unit" class="w-full mb-2 p-2 border rounded" />
-            <input type="number" id="productStock" placeholder="Stock" class="w-full mb-2 p-2 border rounded" />
-            <input type="text" id="productHSN" placeholder="HSN Code (optional)" class="w-full mb-2 p-2 border rounded" />
-            <input type="number" id="productGST" placeholder="GST % (optional)" class="w-full mb-2 p-2 border rounded" />
+            <input type="text" id="newSubCategoryInput" placeholder="New Sub Category" class="w-full mb-2 p-2 border border-secondary-light rounded focus:outline-none focus:ring-2 focus:ring-primary hidden" />
+            <input type="text" id="productBrand" placeholder="Brand" class="w-full mb-2 p-2 border border-secondary-light rounded focus:outline-none focus:ring-2 focus:ring-primary" />
+            <input type="text" id="productModelName" placeholder="Model Name" class="w-full mb-2 p-2 border border-secondary-light rounded focus:outline-none focus:ring-2 focus:ring-primary" />
+            <input type="number" id="productPrice" placeholder="Price" class="w-full mb-2 p-2 border border-secondary-light rounded focus:outline-none focus:ring-2 focus:ring-primary" />
+            <input type="text" id="productUnit" placeholder="Unit" class="w-full mb-2 p-2 border border-secondary-light rounded focus:outline-none focus:ring-2 focus:ring-primary" />
+            <input type="number" id="productStock" placeholder="Stock" class="w-full mb-2 p-2 border border-secondary-light rounded focus:outline-none focus:ring-2 focus:ring-primary" />
+            <input type="text" id="productHSN" placeholder="HSN Code (optional)" class="w-full mb-2 p-2 border border-secondary-light rounded focus:outline-none focus:ring-2 focus:ring-primary" />
+            <input type="number" id="productGST" placeholder="GST % (optional)" class="w-full mb-2 p-2 border border-secondary-light rounded focus:outline-none focus:ring-2 focus:ring-primary" />
             <input type="text" id="productBarcodeValue" placeholder="Barcode Value (auto)" class="w-full mb-2 p-2 border rounded bg-gray-100" readonly />
             <input type="text" id="productProductId" placeholder="Product ID (auto)" class="w-full mb-4 p-2 border rounded bg-gray-100" readonly />
             <div class="flex justify-end space-x-2">
-              <button id="cancelModalBtn" class="px-4 py-2 bg-gray-300 rounded">Cancel</button>
-              <button id="saveProductBtn" class="px-4 py-2 bg-blue-600 text-white rounded">Save</button>
+              <button id="cancelModalBtn" class="px-4 py-2 bg-secondary-light text-secondary-dark rounded hover:bg-secondary-dark hover:text-white transition-colors duration-200">Cancel</button>
+              <button id="saveProductBtn" class="px-4 py-2 bg-primary text-white rounded hover:bg-primary-dark transition-colors duration-200">Save</button>
             </div>
           </div>
         </div>
@@ -201,7 +201,18 @@ document.addEventListener("DOMContentLoaded", async () => {
     `,
     Sales: `
       <div>
-        <h2 class="text-xl font-bold mb-4">Sales</h2>
+        <div class="flex justify-between items-center mb-4">
+          <h2 class="text-xl font-bold">Sales</h2>
+          <div class="flex gap-2">
+            <input type="text" id="salesSearchInput" placeholder="Search by name..." class="border border-secondary-light rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary" />
+            <select id="salesFilterCategory" class="border border-secondary-light rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary">
+              <option value="">All Categories</option>
+            </select>
+            <select id="salesFilterSubCategory" class="border border-secondary-light rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary" disabled>
+              <option value="">All Sub Categories</option>
+            </select>
+          </div>
+        </div>
         <div id="salesProductList" class="grid grid-cols-2 gap-4 mb-6"></div>
       </div>
     `,
@@ -212,18 +223,18 @@ document.addEventListener("DOMContentLoaded", async () => {
           <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div>
               <label for="start-date" class="block text-sm font-medium">Start Date</label>
-              <input type="date" id="start-date" class="w-full border rounded px-2 py-1">
+              <input type="date" id="start-date" class="w-full border border-secondary-light rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary">
             </div>
             <div>
               <label for="end-date" class="block text-sm font-medium">End Date</label>
-              <input type="date" id="end-date" class="w-full border rounded px-2 py-1">
+              <input type="date" id="end-date" class="w-full border border-secondary-light rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary">
             </div>
             <div>
               <label for="invoice-search" class="block text-sm font-medium">Search</label>
-              <input type="text" id="invoice-search" placeholder="Invoice # or Customer" class="w-full border rounded px-2 py-1">
+              <input type="text" id="invoice-search" placeholder="Invoice # or Customer" class="w-full border border-secondary-light rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary">
             </div>
             <div class="flex items-end">
-              <button id="filter-invoices-btn" class="bg-blue-600 text-white px-4 py-2 rounded w-full">Filter</button>
+              <button id="filter-invoices-btn" class="bg-primary text-white px-4 py-2 rounded w-full hover:bg-primary-dark transition-colors duration-200">Filter</button>
             </div>
           </div>
         </div>
@@ -248,29 +259,29 @@ document.addEventListener("DOMContentLoaded", async () => {
         <form id="store-profile-form" class="space-y-4">
           <div>
             <label class="block text-sm font-medium">Store Name</label>
-            <input type="text" id="storeNameInput" class="w-full border px-3 py-2 rounded" required />
+            <input type="text" id="storeNameInput" class="w-full border border-secondary-light px-3 py-2 rounded focus:outline-none focus:ring-2 focus:ring-primary" required />
           </div>
           <div>
             <label class="block text-sm font-medium">Subtitle / Tagline</label>
-            <input type="text" id="storeSubtitleInput" class="w-full border px-3 py-2 rounded" />
+            <input type="text" id="storeSubtitleInput" class="w-full border border-secondary-light px-3 py-2 rounded focus:outline-none focus:ring-2 focus:ring-primary" />
           </div>
           <div>
             <label class="block text-sm font-medium">Full Address</label>
-            <textarea id="storeAddressInput" class="w-full border px-3 py-2 rounded" required></textarea>
+            <textarea id="storeAddressInput" class="w-full border border-secondary-light px-3 py-2 rounded focus:outline-none focus:ring-2 focus:ring-primary" required></textarea>
           </div>
           <div>
             <label class="block text-sm font-medium">Phone Number</label>
-            <input type="text" id="storePhoneInput" class="w-full border px-3 py-2 rounded" required />
+            <input type="text" id="storePhoneInput" class="w-full border border-secondary-light px-3 py-2 rounded focus:outline-none focus:ring-2 focus:ring-primary" required />
           </div>
           <div>
             <label class="block text-sm font-medium">GSTIN (optional)</label>
-            <input type="text" id="storeGstinInput" class="w-full border px-3 py-2 rounded" />
+            <input type="text" id="storeGstinInput" class="w-full border border-secondary-light px-3 py-2 rounded focus:outline-none focus:ring-2 focus:ring-primary" />
           </div>
           <div>
             <label class="block text-sm font-medium">Footer Note (optional)</label>
-            <textarea id="storeFooterInput" class="w-full border px-3 py-2 rounded"></textarea>
+            <textarea id="storeFooterInput" class="w-full border border-secondary-light px-3 py-2 rounded focus:outline-none focus:ring-2 focus:ring-primary"></textarea>
           </div>
-          <button type="submit" id="saveSettingsBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded">
+          <button type="submit" id="saveSettingsBtn" class="bg-primary hover:bg-primary-dark text-white px-4 py-2 rounded transition-colors duration-200">
             💾 Save Profile
           </button>
         </form>
@@ -462,30 +473,13 @@ function setupProductView() {
     })
     .catch((err) => console.error("❌ Failed to load category-HSN map:", err));
 
-  // Populate category dropdown
-  function populateCategoryDropdown(products) {
-    const categories = Array.from(new Set(products.map(p => p.category).filter(Boolean)));
-    filterCategory.innerHTML = '<option value="">All Categories</option>' +
-      categories.map(cat => `<option value="${cat}">${cat}</option>`).join("");
-  }
+  
 
-  // Populate sub category dropdown based on selected category
-  function populateSubCategoryDropdown(products, selectedCategory) {
-    let subCategories = products
-      .filter(p => !selectedCategory || p.category === selectedCategory)
-      .map(p => p.sub_category)
-      .filter(Boolean);
-    subCategories = Array.from(new Set(subCategories));
-    filterSubCategory.innerHTML = '<option value="">All Sub Categories</option>' +
-      subCategories.map(sub => `<option value="${sub}">${sub}</option>`).join("");
-    filterSubCategory.disabled = subCategories.length === 0;
-  }
-
-  // Advanced filter logic
-  function applyFilters() {
-    const nameTerm = searchInput.value.trim().toLowerCase();
-    const selectedCategory = filterCategory.value;
-    const selectedSubCategory = filterSubCategory.value;
+  // Advanced filter logic for Products tab
+  function applyProductFilters() {
+    const nameTerm = document.getElementById("searchInput").value.trim().toLowerCase();
+    const selectedCategory = document.getElementById("filterCategory").value;
+    const selectedSubCategory = document.getElementById("filterSubCategory").value;
     let filtered = allProducts;
     if (nameTerm) {
       filtered = filtered.filter(p => p.name.toLowerCase().includes(nameTerm));
@@ -499,15 +493,16 @@ function setupProductView() {
     displayFilteredProducts(filtered);
   }
 
-  // Initial population
+  // Initial population for Products tab
   async function renderProducts() {
     allProducts = await window.api.getProducts();
-    populateCategoryDropdown(allProducts);
-    populateSubCategoryDropdown(allProducts, filterCategory.value);
-    applyFilters();
+    populateCategoryDropdown(allProducts, document.getElementById("filterCategory"));
+    populateSubCategoryDropdown(allProducts, document.getElementById("filterCategory").value, document.getElementById("filterSubCategory"));
+    applyProductFilters();
   }
 
   function displayFilteredProducts(products) {
+    const productTable = document.getElementById("productTable");
     productTable.innerHTML = products.map(p => `
       <tr>
         <td class="p-2">${p.name}</td>
@@ -519,7 +514,7 @@ function setupProductView() {
         <td class="p-2">₹${p.price}</td>
         <td class="p-2">${p.stock}</td>
         <td class="p-2 space-x-2">
-          <button class="text-blue-600" onclick="editProduct(${p.id}, '${p.name.replace(/'/g, "\'")}', ${p.price}, ${p.stock}, '${p.hsn_code || ""}', '${p.category || ""}', ${p.gst_percent ?? 'null'})">✏️</button>
+          <button class="text-blue-600" onclick="editProduct(${p.id}, '${p.name.replace(/'/g, "'")}', ${p.price}, ${p.stock}, '${p.hsn_code || ""}', '${p.category || ""}', ${p.gst_percent ?? 'null'})">✏️</button>
           <button class="text-red-600" onclick="deleteProduct(${p.id})">🗑️</button>
         </td>
       </tr>
@@ -540,13 +535,13 @@ function setupProductView() {
 
   renderProducts();
 
-  searchInput.addEventListener("input", applyFilters);
-  filterCategory.addEventListener("change", () => {
-    populateSubCategoryDropdown(allProducts, filterCategory.value);
-    filterSubCategory.value = "";
-    applyFilters();
+  document.getElementById("searchInput").addEventListener("input", applyProductFilters);
+  document.getElementById("filterCategory").addEventListener("change", () => {
+    populateSubCategoryDropdown(allProducts, document.getElementById("filterCategory").value, document.getElementById("filterSubCategory"));
+    document.getElementById("filterSubCategory").value = "";
+    applyProductFilters();
   });
-  filterSubCategory.addEventListener("change", applyFilters);
+  document.getElementById("filterSubCategory").addEventListener("change", applyProductFilters);
 
   const categorySelect = document.getElementById("productCategory");
   const hsnInput = document.getElementById("productHSN");
@@ -742,14 +737,45 @@ function setupProductView() {
     });
   }
 }
+function populateCategoryDropdown(products, dropdownElement) {
+  if (!dropdownElement || !products) return;
 
+  const uniqueCategories = [...new Set(products.map(p => p.category).filter(Boolean))];
+  dropdownElement.innerHTML = `<option value="">All</option>`;
+  uniqueCategories.forEach(cat => {
+    const option = document.createElement("option");
+    option.value = cat;
+    option.textContent = cat;
+    dropdownElement.appendChild(option);
+  });
+}
+
+function populateSubCategoryDropdown(products, dropdownElement, selectedCategory) {
+  if (!dropdownElement || !products) return;
+
+  const filteredProducts = selectedCategory
+    ? products.filter(p => p.category === selectedCategory)
+    : products;
+
+  const uniqueSubCategories = [...new Set(filteredProducts.map(p => p.sub_category).filter(Boolean))];
+  dropdownElement.innerHTML = `<option value="">All</option>`;
+  uniqueSubCategories.forEach(sub => {
+    const option = document.createElement("option");
+    option.value = sub;
+    option.textContent = sub;
+    dropdownElement.appendChild(option);
+  });
+}
 async function renderView(viewName) {
   app.innerHTML = views[viewName] || `<p>Unknown view: ${viewName}</p>`;
 
   document.querySelectorAll(".nav-btn").forEach((btn) => {
-    btn.classList.remove("bg-gray-300", "font-semibold");
-    if (btn.innerText.trim() === viewName) {
-      btn.classList.add("bg-gray-300", "font-semibold");
+    const tabName = btn.innerText.trim().replace(' ', ''); // Get the clean tab name
+    btn.classList.remove("bg-gray-300", "font-semibold"); // Remove old classes
+    btn.classList.add("text-secondary-dark", "hover:bg-secondary-light"); // Add new default styles
+    if (tabName === viewName) {
+      btn.classList.remove("text-secondary-dark", "hover:bg-secondary-light"); // Remove default if active
+      btn.classList.add("bg-primary", "text-white", "font-semibold"); // Add active styles
     }
   });
 
@@ -777,7 +803,48 @@ async function renderView(viewName) {
     }
     
     salesProductList = document.getElementById("salesProductList");
-    await renderSalesProducts();
+    salesProductList.className = "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 mb-6"; // Updated grid classes
+
+    // Ensure allProducts is fetched before setting up filters
+    allProducts = await window.api.getProducts();
+    console.log("Sales tab: allProducts after fetch:", allProducts);
+
+    const salesSearchInput = document.getElementById("salesSearchInput");
+    const salesFilterCategory = document.getElementById("salesFilterCategory");
+    const salesFilterSubCategory = document.getElementById("salesFilterSubCategory");
+
+    // Populate category dropdown for sales
+    populateCategoryDropdown(allProducts, salesFilterCategory);
+
+    // Function to apply filters for sales products
+    function applySalesFilters() {
+      const nameTerm = salesSearchInput.value.trim().toLowerCase();
+      const selectedCategory = salesFilterCategory.value;
+      const selectedSubCategory = salesFilterSubCategory.value;
+      let filtered = allProducts;
+
+      if (nameTerm) {
+        filtered = filtered.filter(p => p.name.toLowerCase().includes(nameTerm));
+      }
+      if (selectedCategory) {
+        filtered = filtered.filter(p => p.category === selectedCategory);
+      }
+      if (selectedSubCategory) {
+        filtered = filtered.filter(p => p.sub_category === selectedSubCategory);
+      }
+      renderSalesProducts(filtered); // Pass filtered products to render function
+    }
+
+    // Event Listeners for sales filters
+    salesSearchInput.addEventListener("input", applySalesFilters);
+    salesFilterCategory.addEventListener("change", () => {
+      populateSubCategoryDropdown(allProducts, salesFilterCategory.value, salesFilterSubCategory);
+      salesFilterSubCategory.value = ""; // Reset sub-category when category changes
+      applySalesFilters();
+    });
+    salesFilterSubCategory.addEventListener("change", applySalesFilters);
+
+    await renderSalesProducts(allProducts); // Initial render of all products
 
     const checkoutBtn = document.querySelector("#fixed-cart-ui #checkoutBtn");
     if (checkoutBtn) {
@@ -869,33 +936,45 @@ if (viewName === "Settings") {
   }
   
 
-  async function renderSalesProducts() {
-    allProducts = await window.api.getProducts();
-    if (!salesProductList) return;
+  async function renderSalesProducts(productsToRender = allProducts) {
+    console.log("renderSalesProducts: productsToRender received:", productsToRender);
+    if (!salesProductList) {
+      console.error("salesProductList element not found!");
+      return;
+    }
+    console.log("salesProductList element found:", salesProductList);
     salesProductList.innerHTML = "";
 
-    if (allProducts.length === 0) {
-      salesProductList.innerHTML = `<p class="text-gray-500 col-span-2">No products available for sale.</p>`;
+    const products = productsToRender.length > 0 ? productsToRender : allProducts;
+
+    if (products.length === 0) {
+      salesProductList.innerHTML = `<p class="text-gray-500 col-span-full text-center">No products available for sale.</p>`;
+      console.log("No products to display.");
       return;
     }
 
-    allProducts.forEach(p => {
+    products.forEach(p => {
       const card = document.createElement("div");
-      card.className = "border rounded shadow p-4 flex flex-col justify-between";
+      card.className = "bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow duration-300 overflow-hidden flex flex-col";
       const safeName = p.name.replace(/'/g, "'");
       card.innerHTML = `
-        <div>
-          <h3 class="text-lg font-semibold">${p.name}</h3>
-          <p class="text-gray-700">₹${p.price}</p>
-          <p class="text-sm ${p.stock < 5 ? 'text-red-600' : 'text-gray-500'}">${p.stock} in stock</p>
+        <div class="p-4 flex-grow">
+          <h3 class="text-lg font-semibold text-gray-800 mb-1">${p.name}</h3>
+          <p class="text-sm text-gray-600 mb-2">${p.category || 'N/A'} ${p.brand ? `• ${p.brand}` : ''}</p>
+          <div class="flex justify-between items-baseline mb-2">
+            <span class="text-xl font-bold text-primary">₹${p.price}</span>
+            <span class="text-sm text-gray-500">Stock: <span class="${p.stock < 5 ? 'text-danger font-semibold' : 'text-success'}">${p.stock}</span></span>
+          </div>
         </div>
-        <button class="mt-4 ${p.stock === 0 ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'} text-white px-3 py-1 rounded w-full"
+        <button class="w-full py-2 text-white font-semibold transition-colors duration-200
+                ${p.stock === 0 ? 'bg-secondary-light cursor-not-allowed' : 'bg-primary hover:bg-primary-dark'}"
                 onclick="addToCart(${p.id}, '${safeName}', ${p.price})"
                 ${p.stock === 0 ? 'disabled' : ''}>
           ${p.stock === 0 ? 'Out of Stock' : 'Add to Cart'}
         </button>
       `;
       salesProductList.appendChild(card);
+      console.log("Appended card for product:", p.name);
     });
     await updateCartUI();
   }
