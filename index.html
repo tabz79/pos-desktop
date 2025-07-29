@@ -168,13 +168,21 @@
   <script>
     const cartOverlay = document.getElementById("cartOverlay");
     const fixedCart = document.getElementById("fixed-cart-ui");
+    const invoiceModal = document.getElementById("invoice-modal");
 
     const observer = new MutationObserver(() => {
-      const isVisible = !cartOverlay.classList.contains("hidden");
-      fixedCart.style.display = isVisible ? "none" : "block";
+      const isCartOverlayVisible = !cartOverlay.classList.contains("hidden");
+      const isInvoiceVisible = !invoiceModal.classList.contains("hidden");
+      
+      if (isCartOverlayVisible || isInvoiceVisible) {
+        fixedCart.style.display = "none";
+      } else {
+        fixedCart.style.display = "block";
+      }
     });
 
     observer.observe(cartOverlay, { attributes: true, attributeFilter: ['class'] });
+    observer.observe(invoiceModal, { attributes: true, attributeFilter: ['class'] });
   </script>
 </body>
 </html>

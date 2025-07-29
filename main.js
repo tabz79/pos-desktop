@@ -85,18 +85,6 @@ if (dbAPI) {
     return dbAPI.getAllProducts();
   });
 
-  ipcMain.handle('get-paginated-products', async (event, options) => {
-    return dbAPI.getPaginatedProducts(options);
-  });
-
-  ipcMain.handle('get-unique-categories', async () => {
-    return dbAPI.getUniqueCategories();
-  });
-
-  ipcMain.handle('get-unique-sub-categories', async (event, category) => {
-    return dbAPI.getUniqueSubCategories(category);
-  });
-
   ipcMain.handle('add-product', async (event, product) => {
     return dbAPI.addProduct(product);
   });

@@ -82,15 +82,15 @@ document.addEventListener("DOMContentLoaded", async () => {
         
         <!-- Sales Stats -->
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-          <div class="bg-white p-4 rounded-lg shadow card-transition">
+          <div class="bg-white p-4 rounded-lg shadow">
             <h3 class="text-gray-500 text-sm font-medium">Today's Sales</h3>
             <p id="today-sales" class="text-2xl font-semibold">₹0</p>
           </div>
-          <div class="bg-white p-4 rounded-lg shadow card-transition">
+          <div class="bg-white p-4 rounded-lg shadow">
             <h3 class="text-gray-500 text-sm font-medium">This Month's Sales</h3>
             <p id="month-sales" class="text-2xl font-semibold">₹0</p>
           </div>
-          <div class="bg-white p-4 rounded-lg shadow card-transition">
+          <div class="bg-white p-4 rounded-lg shadow">
             <h3 class="text-gray-500 text-sm font-medium">This Year's Sales</h3>
             <p id="year-sales" class="text-2xl font-semibold">₹0</p>
           </div>
@@ -98,11 +98,11 @@ document.addEventListener("DOMContentLoaded", async () => {
 
         <!-- Chart and Top Products -->
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-          <div class="lg:col-span-2 bg-white p-4 rounded-lg shadow card-transition">
+          <div class="lg:col-span-2 bg-white p-4 rounded-lg shadow">
             <h3 class="text-lg font-semibold mb-2">Monthly Sales</h3>
             <canvas id="monthly-sales-chart"></canvas>
           </div>
-          <div class="bg-white p-4 rounded-lg shadow card-transition">
+          <div class="bg-white p-4 rounded-lg shadow">
             <h3 class="text-lg font-semibold mb-2">Top Selling Products</h3>
             <canvas id="top-products-chart"></canvas>
           </div>
@@ -141,7 +141,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             <select id="filterSubCategory" class="border border-secondary-light rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary" disabled>
               <option value="">All Sub Categories</option>
             </select>
-            <button id="addProductBtn" class="bg-primary hover:bg-primary-dark text-white px-4 py-2 rounded btn-transition">
+            <button id="addProductBtn" class="bg-primary hover:bg-primary-dark text-white px-4 py-2 rounded transition-colors duration-200">
               + Add Product
             </button>
           </div>
@@ -165,7 +165,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         </table>
 
         <div id="productModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
-          <div class="bg-white p-6 rounded shadow-lg w-full max-w-md mx-auto">
+          <div class="bg-white p-6 rounded shadow w-96">
             <h2 class="text-lg font-semibold mb-4" id="modalTitle">Add Product</h2>
             <input type="text" id="productName" placeholder="Product Name" class="w-full mb-2 p-2 border border-secondary-light rounded focus:outline-none focus:ring-2 focus:ring-primary" />
             <div class="flex gap-2 mb-2">
@@ -770,11 +770,12 @@ async function renderView(viewName) {
   app.innerHTML = views[viewName] || `<p>Unknown view: ${viewName}</p>`;
 
   document.querySelectorAll(".nav-btn").forEach((btn) => {
-    const tabName = btn.innerText.trim().replace(/\s+/g, '');
+    const tabName = btn.innerText.trim().replace(' ', ''); // Get the clean tab name
+    btn.classList.remove("bg-gray-300", "font-semibold"); // Remove old classes
+    btn.classList.add("text-secondary-dark", "hover:bg-secondary-light"); // Add new default styles
     if (tabName === viewName) {
-      btn.classList.add("active");
-    } else {
-      btn.classList.remove("active");
+      btn.classList.remove("text-secondary-dark", "hover:bg-secondary-light"); // Remove default if active
+      btn.classList.add("bg-primary", "text-white", "font-semibold"); // Add active styles
     }
   });
 
@@ -965,7 +966,7 @@ if (viewName === "Settings") {
             <span class="text-sm text-gray-500">Stock: <span class="${p.stock < 5 ? 'text-danger font-semibold' : 'text-success'}">${p.stock}</span></span>
           </div>
         </div>
-        <button class="w-full py-2 text-white font-semibold btn-transition
+        <button class="w-full py-2 text-white font-semibold transition-colors duration-200
                 ${p.stock === 0 ? 'bg-secondary-light cursor-not-allowed' : 'bg-primary hover:bg-primary-dark'}"
                 onclick="addToCart(${p.id}, '${safeName}', ${p.price})"
                 ${p.stock === 0 ? 'disabled' : ''}>

@@ -164,119 +164,6 @@ function getAllProducts() {
   return stmt.all();
 }
 
-// ✅ Get paginated products with filtering
-function getPaginatedProducts({ page = 1, limit = 15, category = '', sub_category = '', searchQuery = '' }) {
-  try {
-    const offset = (page - 1) * limit;
-    let whereConditions = [];
-    let params = [];
-
-    if (searchQuery) {
-      whereConditions.push('name LIKE ?');
-      params.push(`%${searchQuery}%`);
-    }
-
-    if (category) {
-      whereConditions.push('category = ?');
-      params.push(category);
-    }
-
-    if (sub_category) {
-      whereConditions.push('sub_category = ?');
-      params.push(sub_category);
-    }
-
-    const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
-
-    // Get total count
-    const countStmt = db.prepare(`SELECT COUNT(*) as total FROM products ${whereClause}`);
-    const totalResult = countStmt.get(...params);
-    const total = totalResult.total;
-
-    // Get paginated data
-    const dataStmt = db.prepare(`
-      SELECT * FROM products 
-      ${whereClause}
-      ORDER BY id DESC 
-      LIMIT ? OFFSET ?
-    `);
-    const data = dataStmt.all(...params, limit, offset);
-
-    return {
-      data,
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit)
-    };
-  } catch (err) {
-    console.error("❌ Failed to get paginated products:", err);
-    return { data: [], total: 0, page: 1, limit: 15, totalPages: 1 };
-  }
-}
-
-// ✅ Get unique categories
-function getUniqueCategories() {
-  try {
-    // First check if the table exists
-    const tableExists = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='products'").get();
-    if (!tableExists) {
-      console.log("⚠️ Products table doesn't exist yet");
-      return [];
-    }
-
-    // Check if category column exists
-    const columns = db.prepare("PRAGMA table_info(products)").all();
-    const hasCategory = columns.some(col => col.name === 'category');
-    if (!hasCategory) {
-      console.log("⚠️ Category column doesn't exist in products table");
-      return [];
-    }
-
-    const stmt = db.prepare('SELECT DISTINCT category FROM products WHERE category IS NOT NULL AND category != "" ORDER BY category');
-    const results = stmt.all();
-    return results.map(row => row.category);
-  } catch (err) {
-    console.error("❌ Failed to get unique categories:", err);
-    return [];
-  }
-}
-
-// ✅ Get unique sub-categories for a given category
-function getUniqueSubCategories(category = '') {
-  try {
-    // First check if the table exists
-    const tableExists = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='products'").get();
-    if (!tableExists) {
-      console.log("⚠️ Products table doesn't exist yet");
-      return [];
-    }
-
-    // Check if sub_category column exists
-    const columns = db.prepare("PRAGMA table_info(products)").all();
-    const hasSubCategory = columns.some(col => col.name === 'sub_category');
-    if (!hasSubCategory) {
-      console.log("⚠️ Sub_category column doesn't exist in products table");
-      return [];
-    }
-
-    let stmt, results;
-    
-    if (category) {
-      stmt = db.prepare('SELECT DISTINCT sub_category FROM products WHERE sub_category IS NOT NULL AND sub_category != "" AND category = ? ORDER BY sub_category');
-      results = stmt.all(category);
-    } else {
-      stmt = db.prepare('SELECT DISTINCT sub_category FROM products WHERE sub_category IS NOT NULL AND sub_category != "" ORDER BY sub_category');
-      results = stmt.all();
-    }
-    
-    return results.map(row => row.sub_category);
-  } catch (err) {
-    console.error("❌ Failed to get unique sub-categories:", err);
-    return [];
-  }
-}
-
 // ✅ Add a new product
 function addProduct(product) {
   const stmt = db.prepare(`
@@ -648,9 +535,6 @@ function getStoreSettings() {
 module.exports = {
   db,
   getAllProducts,
-  getPaginatedProducts,
-  getUniqueCategories,
-  getUniqueSubCategories,
   addProduct,
   deleteProduct,
   updateProduct,
