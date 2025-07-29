@@ -164,6 +164,18 @@ document.addEventListener("DOMContentLoaded", async () => {
           <tbody id="productTable"></tbody>
         </table>
 
+        <!-- Pagination Controls -->
+        <div id="productPaginationControls" class="flex justify-between items-center mt-4">
+          <div>
+            <button id="prevPageBtn" class="bg-gray-300 px-4 py-2 rounded disabled:opacity-50 disabled:cursor-not-allowed">Previous</button>
+            <span id="pageInfo" class="px-4">Page 1 of 1</span>
+            <button id="nextPageBtn" class="bg-gray-300 px-4 py-2 rounded disabled:opacity-50 disabled:cursor-not-allowed">Next</button>
+          </div>
+          <div>
+            <span id="totalProductsInfo">Total Products: 0</span>
+          </div>
+        </div>
+
         <div id="productModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
           <div class="bg-white p-6 rounded shadow w-96">
             <h2 class="text-lg font-semibold mb-4" id="modalTitle">Add Product</h2>
@@ -456,6 +468,10 @@ function setupProductView() {
   const filterSubCategory = document.getElementById("filterSubCategory");
   const fixedCart = document.getElementById("fixed-cart-ui");
 
+  // Pagination state
+  let currentPage = 1;
+  const limit = 15;
+
   // 🔽 Load category → HSN + GST mapping
   let categoryHSNMap = {};
   fetch("category-hsn-map.json")
@@ -473,75 +489,144 @@ function setupProductView() {
     })
     .catch((err) => console.error("❌ Failed to load category-HSN map:", err));
 
-  
+  // ✅ Fetch and render paginated products
+  async function fetchAndRenderProducts(page = 1) {
+    try {
+      console.log("🔄 fetchAndRenderProducts called with page:", page);
+      const searchQuery = searchInput.value.trim();
+      const category = filterCategory.value;
+      const sub_category = filterSubCategory.value;
 
-  // Advanced filter logic for Products tab
-  function applyProductFilters() {
-    const nameTerm = document.getElementById("searchInput").value.trim().toLowerCase();
-    const selectedCategory = document.getElementById("filterCategory").value;
-    const selectedSubCategory = document.getElementById("filterSubCategory").value;
-    let filtered = allProducts;
-    if (nameTerm) {
-      filtered = filtered.filter(p => p.name.toLowerCase().includes(nameTerm));
+      console.log("🔍 Filter params:", { searchQuery, category, sub_category });
+
+      const result = await window.api.getPaginatedProducts({
+        page,
+        limit,
+        category,
+        sub_category,
+        searchQuery
+      });
+
+      console.log("📊 Pagination result:", result);
+
+      // Update pagination state
+      currentPage = result.page;
+      const totalPages = result.totalPages;
+
+      // Render products
+      productTable.innerHTML = result.data.map(p => `
+        <tr>
+          <td class="p-2">${p.name}</td>
+          <td class="p-2">${p.category || ''}</td>
+          <td class="p-2">${p.sub_category || ''}</td>
+          <td class="p-2">${p.brand || ''}</td>
+          <td class="p-2">${p.model_name || ''}</td>
+          <td class="p-2">${p.unit || ''}</td>
+          <td class="p-2">₹${p.price}</td>
+          <td class="p-2">${p.stock}</td>
+          <td class="p-2 space-x-2">
+            <button class="text-blue-600" onclick="editProduct(${p.id}, '${p.name.replace(/'/g, "'")}', ${p.price}, ${p.stock}, '${p.hsn_code || ""}', '${p.category || ""}', ${p.gst_percent ?? 'null'})">✏️</button>
+            <button class="text-red-600" onclick="deleteProduct(${p.id})">🗑️</button>
+          </td>
+        </tr>
+      `).join("");
+
+      console.log("📋 Rendered", result.data.length, "products");
+
+      // Update pagination controls
+      const pageInfo = document.getElementById("pageInfo");
+      const totalProductsInfo = document.getElementById("totalProductsInfo");
+      const prevPageBtn = document.getElementById("prevPageBtn");
+      const nextPageBtn = document.getElementById("nextPageBtn");
+
+      if (pageInfo) pageInfo.textContent = `Page ${currentPage} of ${totalPages}`;
+      if (totalProductsInfo) totalProductsInfo.textContent = `Total Products: ${result.total}`;
+      if (prevPageBtn) {
+        prevPageBtn.disabled = currentPage === 1;
+        prevPageBtn.classList.toggle("opacity-50", currentPage === 1);
+        prevPageBtn.classList.toggle("cursor-not-allowed", currentPage === 1);
+      }
+      if (nextPageBtn) {
+        nextPageBtn.disabled = currentPage === totalPages;
+        nextPageBtn.classList.toggle("opacity-50", currentPage === totalPages);
+        nextPageBtn.classList.toggle("cursor-not-allowed", currentPage === totalPages);
+      }
+
+      console.log("🎛️ Pagination controls updated");
+    } catch (err) {
+      console.error("❌ Failed to fetch products:", err);
+      showToast("❌ Failed to load products");
     }
-    if (selectedCategory) {
-      filtered = filtered.filter(p => p.category === selectedCategory);
+  }
+
+  // ✅ Populate filter dropdowns
+  async function populateFilterDropdowns() {
+    try {
+      console.log("🔧 populateFilterDropdowns called");
+      const categories = await window.api.getUniqueCategories();
+      const subCategories = await window.api.getUniqueSubCategories();
+
+      console.log("📂 Categories found:", categories);
+      console.log("📂 Sub-categories found:", subCategories);
+
+      // Populate category dropdown
+      if (filterCategory) {
+        filterCategory.innerHTML = '<option value="">All Categories</option>';
+        categories.forEach(cat => {
+          const option = document.createElement("option");
+          option.value = cat;
+          option.textContent = cat;
+          filterCategory.appendChild(option);
+        });
+        console.log("✅ Category dropdown populated");
+      }
+
+      // Populate sub-category dropdown
+      if (filterSubCategory) {
+        filterSubCategory.innerHTML = '<option value="">All Sub Categories</option>';
+        subCategories.forEach(sub => {
+          const option = document.createElement("option");
+          option.value = sub;
+          option.textContent = sub;
+          filterSubCategory.appendChild(option);
+        });
+        filterSubCategory.disabled = false;
+        console.log("✅ Sub-category dropdown populated");
+      }
+    } catch (err) {
+      console.error("❌ Failed to populate filter dropdowns:", err);
     }
-    if (selectedSubCategory) {
-      filtered = filtered.filter(p => p.sub_category === selectedSubCategory);
+  }
+
+  // ✅ Handle filter changes
+  function handleFilterChange() {
+    console.log("🔍 handleFilterChange called");
+    currentPage = 1; // Reset to first page when filters change
+    fetchAndRenderProducts(currentPage);
+  }
+
+  // ✅ Handle sub-category filter change
+  async function handleCategoryChange() {
+    const selectedCategory = filterCategory.value;
+    try {
+      const subCategories = await window.api.getUniqueSubCategories(selectedCategory);
+      
+      if (filterSubCategory) {
+        filterSubCategory.innerHTML = '<option value="">All Sub Categories</option>';
+        subCategories.forEach(sub => {
+          const option = document.createElement("option");
+          option.value = sub;
+          option.textContent = sub;
+          filterSubCategory.appendChild(option);
+        });
+        filterSubCategory.value = "";
+      }
+      
+      handleFilterChange();
+    } catch (err) {
+      console.error("❌ Failed to update sub-categories:", err);
     }
-    displayFilteredProducts(filtered);
   }
-
-  // Initial population for Products tab
-  async function renderProducts() {
-    allProducts = await window.api.getProducts();
-    populateCategoryDropdown(allProducts, document.getElementById("filterCategory"));
-    populateSubCategoryDropdown(allProducts, document.getElementById("filterCategory").value, document.getElementById("filterSubCategory"));
-    applyProductFilters();
-  }
-
-  function displayFilteredProducts(products) {
-    const productTable = document.getElementById("productTable");
-    productTable.innerHTML = products.map(p => `
-      <tr>
-        <td class="p-2">${p.name}</td>
-        <td class="p-2">${p.category || ''}</td>
-        <td class="p-2">${p.sub_category || ''}</td>
-        <td class="p-2">${p.brand || ''}</td>
-        <td class="p-2">${p.model_name || ''}</td>
-        <td class="p-2">${p.unit || ''}</td>
-        <td class="p-2">₹${p.price}</td>
-        <td class="p-2">${p.stock}</td>
-        <td class="p-2 space-x-2">
-          <button class="text-blue-600" onclick="editProduct(${p.id}, '${p.name.replace(/'/g, "'")}', ${p.price}, ${p.stock}, '${p.hsn_code || ""}', '${p.category || ""}', ${p.gst_percent ?? 'null'})">✏️</button>
-          <button class="text-red-600" onclick="deleteProduct(${p.id})">🗑️</button>
-        </td>
-      </tr>
-    `).join("");
-  }
-  window.deleteProduct = async function(id) {
-  const confirmed = confirm("Are you sure you want to delete?");
-  if (!confirmed) return;
-
-  const result = await window.api.deleteProduct(id);
-  if (result.success) {
-    showToast("🗑️ Product deleted");
-    renderProducts(); // ✅ This is the fix: force live refresh
-  } else {
-    showToast("❌ Delete failed");
-  }
-}
-
-  renderProducts();
-
-  document.getElementById("searchInput").addEventListener("input", applyProductFilters);
-  document.getElementById("filterCategory").addEventListener("change", () => {
-    populateSubCategoryDropdown(allProducts, document.getElementById("filterCategory").value, document.getElementById("filterSubCategory"));
-    document.getElementById("filterSubCategory").value = "";
-    applyProductFilters();
-  });
-  document.getElementById("filterSubCategory").addEventListener("change", applyProductFilters);
 
   const categorySelect = document.getElementById("productCategory");
   const hsnInput = document.getElementById("productHSN");
@@ -663,7 +748,7 @@ function setupProductView() {
     if (result.success) {
       showToast(editingProductId ? "✏️ Product updated!" : "✅ Product added!");
       modal.classList.add("hidden");
-      renderProducts();
+      fetchAndRenderProducts(currentPage); // Refresh current page with pagination
     } else {
       showToast("❌ Failed to save product.");
     }
@@ -736,7 +821,58 @@ function setupProductView() {
       }
     });
   }
+
+  // ✅ Initialize the view
+  async function initializeProductView() {
+    console.log("🚀 initializeProductView called");
+    await populateFilterDropdowns();
+    await fetchAndRenderProducts(1);
+    console.log("✅ Product view initialization complete");
+  }
+
+  // ✅ Event listeners for pagination
+  const prevPageBtn = document.getElementById("prevPageBtn");
+  const nextPageBtn = document.getElementById("nextPageBtn");
+
+  if (prevPageBtn) {
+    console.log("🔗 Adding prev page listener");
+    prevPageBtn.addEventListener("click", () => {
+      console.log("⬅️ Prev page clicked");
+      if (currentPage > 1) {
+        fetchAndRenderProducts(currentPage - 1);
+      }
+    });
+  }
+
+  if (nextPageBtn) {
+    console.log("🔗 Adding next page listener");
+    nextPageBtn.addEventListener("click", () => {
+      console.log("➡️ Next page clicked");
+      fetchAndRenderProducts(currentPage + 1);
+    });
+  }
+
+  // ✅ Event listeners for filters
+  if (searchInput) {
+    console.log("🔗 Adding search input listener");
+    searchInput.addEventListener("input", handleFilterChange);
+  }
+
+  if (filterCategory) {
+    console.log("🔗 Adding category filter listener");
+    filterCategory.addEventListener("change", handleCategoryChange);
+  }
+
+  if (filterSubCategory) {
+    console.log("🔗 Adding sub-category filter listener");
+    filterSubCategory.addEventListener("change", handleFilterChange);
+  }
+
+  // ✅ Initialize the view
+  console.log("🎯 Starting Product view setup");
+  initializeProductView();
 }
+
 function populateCategoryDropdown(products, dropdownElement) {
   if (!dropdownElement || !products) return;
 
@@ -1065,17 +1201,20 @@ if (mainContent) {
 async function renderCartOverlay() {
   const invoiceInput = document.getElementById("customerInvoiceNo");
   if (invoiceInput) {
-    try {
-      const backendInvoiceNo = await window.api.getNextInvoiceNo();
-      if (backendInvoiceNo) {
-        invoiceInput.value = backendInvoiceNo;
-      } else {
-        invoiceInput.value = "INV_FAILED";
-        showToast("⚠️ Failed to get invoice number.");
+    // Only generate new invoice number if one doesn't already exist
+    if (!invoiceInput.value || invoiceInput.value === "INV_FAILED" || invoiceInput.value === "INV_ERR") {
+      try {
+        const backendInvoiceNo = await window.api.getNextInvoiceNo();
+        if (backendInvoiceNo) {
+          invoiceInput.value = backendInvoiceNo;
+        } else {
+          invoiceInput.value = "INV_FAILED";
+          showToast("⚠️ Failed to get invoice number.");
+        }
+      } catch (err) {
+        console.error("⚠️ Invoice fetch failed:", err);
+        invoiceInput.value = "INV_ERR";
       }
-    } catch (err) {
-      console.error("⚠️ Invoice fetch failed:", err);
-      invoiceInput.value = "INV_ERR";
     }
   }
 
@@ -1130,7 +1269,7 @@ async function renderCartOverlay() {
 
   const confirmBtn = document.getElementById("cartCheckoutBtn");
   if (confirmBtn) {
-	  confirmBtn.disabled = false; // 👈 this is what’s missing!
+	  confirmBtn.disabled = false; // 👈 this is what's missing!
     confirmBtn.onclick = async () => {
       const invoiceNo = document.getElementById("customerInvoiceNo")?.value?.trim();
       const name = document.getElementById("custName")?.value?.trim() || null;
@@ -1793,7 +1932,7 @@ if (!window.deleteProduct) {
         const result = await window.api.deleteProduct(id);
         if (result.success) {
           showToast("🗑️ Product deleted!");
-          renderProducts();
+          // Note: This will be overridden by the scoped version in setupProductView
         } else {
           showToast("❌ Failed to delete product.");
         }
@@ -1804,3 +1943,4 @@ if (!window.deleteProduct) {
     }
   };
 }
+

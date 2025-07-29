@@ -3,6 +3,9 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('api', {
   // 🔄 Product Operations
   getProducts: () => ipcRenderer.invoke('get-products'),
+  getPaginatedProducts: (options) => ipcRenderer.invoke('get-paginated-products', options),
+  getUniqueCategories: () => ipcRenderer.invoke('get-unique-categories'),
+  getUniqueSubCategories: (category) => ipcRenderer.invoke('get-unique-sub-categories', category),
   addProduct: (product) => ipcRenderer.invoke('add-product', product),
   deleteProduct: (id) => ipcRenderer.invoke('delete-product', id),
   updateProduct: (product) => ipcRenderer.invoke('update-product', product),

@@ -6,11 +6,11 @@
   <link href="./styles/output.css" rel="stylesheet" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
-<body class="bg-gray-100 text-gray-900 font-sans h-screen overflow-hidden">
+<body class="bg-secondary-light text-gray-900 font-sans h-screen overflow-hidden">
   <div class="flex h-full">
 
     <!-- Sidebar -->
-    <div class="w-64 bg-white shadow-lg p-4 overflow-y-auto">
+    <div class="w-64 bg-white shadow-xl p-4 overflow-y-auto border-r border-secondary-light">
       <h2 class="text-xl font-bold mb-4">POS Menu</h2>
       <ul class="space-y-2">
         <li><button class="nav-btn w-full text-left hover:bg-gray-200 p-2 rounded">Dashboard</button></li>
@@ -25,22 +25,22 @@
     <div class="flex-1 flex flex-col relative min-h-0">
 
       <!-- Scrollable Main Content Area -->
-      <div id="main-scrollable-content" class="flex-1 overflow-y-auto p-6 pb-[7rem] bg-gray-50">
+      <div id="main-scrollable-content" class="flex-1 overflow-y-auto p-6 pb-[7rem] bg-secondary-light">
         <div id="app"></div>
       </div>
 
       <!-- 🧾 Cart Overlay -->
       <div id="cartOverlay" class="hidden fixed inset-0 bg-white z-50 flex flex-col">
-        <div class="flex justify-between items-center p-4 shadow border-b">
+        <div class="flex justify-between items-center p-4 shadow border-b border-secondary-light bg-primary text-white">
           <h2 class="text-xl font-bold">🛒 Finalize Cart</h2>
-          <button onclick="document.getElementById('cartOverlay').classList.add('hidden')" class="text-gray-500 hover:text-black text-xl font-bold">×</button>
+          <button onclick="document.getElementById('cartOverlay').classList.add('hidden')" class="text-white hover:text-secondary-light text-xl font-bold">×</button>
         </div>
 
         <!-- Cart Table (Only this is scrollable) -->
         <div class="overflow-y-auto flex-1 min-h-0 p-4">
           <table class="w-full text-sm table-auto border">
             <thead>
-              <tr class="bg-gray-100 border-b">
+              <tr class="bg-secondary-light border-b border-secondary-dark">
                 <th class="p-2">S.No</th>
                 <th class="p-2">Item</th>
                 <th class="p-2">Rate</th>
@@ -48,7 +48,7 @@
                 <th class="p-2">GST%</th>
                 <th class="p-2 flex items-center gap-1">
                   Discount
-                  <select id="discountModeSwitcher" class="border px-1 py-0.5 rounded text-xs w-14">
+                  <select id="discountModeSwitcher" class="border border-secondary-dark px-1 py-0.5 rounded text-xs w-14 bg-white">
                     <option value="flat">₹</option>
                     <option value="percent" selected>%</option>
                   </select>
@@ -62,7 +62,7 @@
           </table>
         </div>
 
-<div id="cartFooterTotals" class="w-full px-8 text-sm font-medium space-y-2 p-4 bg-gray-100 rounded shadow">
+<div id="cartFooterTotals" class="w-full px-8 text-sm font-medium space-y-2 p-4 bg-secondary-light rounded shadow-inner">
   <div class="flex justify-between">
     <span>Total Amount:</span>
     <span id="footerTotalAmount" class="font-semibold">₹0.00</span>
@@ -80,40 +80,40 @@
   <!-- Apply Discount Controls -->
   <div class="flex gap-2 justify-end items-center mt-3">
     <label class="text-sm">Apply Overall Discount:</label>
-    <select id="globalDiscountType" class="border px-2 py-1 rounded text-sm">
+    <select id="globalDiscountType" class="border border-secondary-dark px-2 py-1 rounded text-sm">
       <option value="flat">₹</option>
       <option value="percent">%</option>
     </select>
-    <input type="number" id="globalDiscountValue" placeholder="Value" class="border rounded px-2 py-1 w-20 text-sm" />
-    <button id="applyGlobalDiscountBtn" class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm">Apply</button>
-    <button id="resetGlobalDiscountBtn" class="bg-gray-400 hover:bg-gray-500 text-white px-3 py-1 rounded text-sm">Reset</button>
+    <input type="number" id="globalDiscountValue" placeholder="Value" class="border border-secondary-dark rounded px-2 py-1 w-20 text-sm" />
+    <button id="applyGlobalDiscountBtn" class="bg-primary hover:bg-primary-dark text-white px-3 py-1 rounded text-sm transition-colors duration-200">Apply</button>
+    <button id="resetGlobalDiscountBtn" class="bg-secondary hover:bg-secondary-dark text-white px-3 py-1 rounded text-sm transition-colors duration-200">Reset</button>
   </div>
 </div>
 
         <!-- 📌 Customer Metadata Section -->
-        <div class="shrink-0 border-t p-4 bg-white">
+        <div class="shrink-0 border-t border-secondary-light p-4 bg-white">
           <div class="grid grid-cols-2 gap-4 text-sm mb-4">
             <div>
               <label class="block font-medium">Customer Name</label>
-              <input type="text" id="custName" placeholder="Optional" class="w-full border rounded px-2 py-1" />
+              <input type="text" id="custName" placeholder="Optional" class="w-full border border-secondary-light rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary" />
             </div>
             <div>
               <label class="block font-medium">Phone Number</label>
-              <input type="text" id="custPhone" placeholder="Optional" class="w-full border rounded px-2 py-1" />
+              <input type="text" id="custPhone" placeholder="Optional" class="w-full border border-secondary-light rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary" />
             </div>
             <div>
               <label class="block font-medium">Store GSTIN</label>
-              <input type="text" id="custGSTIN" placeholder="Optional" class="w-full border rounded px-2 py-1" />
+              <input type="text" id="custGSTIN" placeholder="Optional" class="w-full border border-secondary-light rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary" />
             </div>
             <div>
               <label class="block font-medium">Invoice No.</label>
-              <input type="text" id="customerInvoiceNo" class="w-full border rounded px-2 py-1" />
+              <input type="text" id="customerInvoiceNo" class="w-full border border-secondary-light rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary" />
             </div>
           </div>
           <div class="flex justify-between items-center text-sm">
             <div class="flex items-center gap-2">
               <label class="font-medium">Payment Method</label>
-              <select id="paymentMode" class="border rounded px-2 py-1 text-sm">
+              <select id="paymentMode" class="border border-secondary-light rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary">
                 <option value="">Select</option>
                 <option value="cash">Cash</option>
                 <option value="upi">UPI</option>
@@ -121,8 +121,8 @@
               </select>
             </div>
             <div class="flex gap-2">
-              <button id="previewInvoiceBtn" class="bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded">Preview Invoice</button>
-              <button id="cartCheckoutBtn" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded" disabled>Checkout</button>
+              <button id="previewInvoiceBtn" class="bg-info hover:bg-blue-600 text-white px-4 py-2 rounded transition-colors duration-200">Preview Invoice</button>
+              <button id="cartCheckoutBtn" class="bg-success hover:bg-green-700 text-white px-4 py-2 rounded transition-colors duration-200" disabled>Checkout</button>
             </div>
           </div>
         </div>
@@ -130,29 +130,29 @@
 
       <!-- 🧾 Invoice Modal -->
       <div id="invoice-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50 print:block print:bg-white print:inset-0 print:static">
-        <div class="bg-white rounded-lg p-6 w-[30rem] shadow-lg print:shadow-none print:w-full print:max-w-[600px] print:mx-auto">
+        <div class="bg-white rounded-lg p-6 w-[30rem] shadow-lg print:shadow-none print:w-full print:max-w-[600px] print:mx-auto border border-secondary-light">
           <div id="invoice-header" class="mb-4 text-center border-b pb-2"></div>
           <p id="invoice-meta" class="text-xs text-gray-500 mt-1 text-right"></p>
           <div id="invoice-items" class="space-y-2 mb-4 text-sm max-h-64 overflow-y-auto print:overflow-visible print:max-h-full"></div>
           <p id="invoice-total" class="text-right font-semibold text-lg mb-4"></p>
           <div class="flex flex-wrap justify-end items-center gap-2 print:hidden">
-            <select id="print-mode" class="border rounded px-2 py-1 text-sm">
+            <select id="print-mode" class="border border-secondary-light rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary">
               <option value="thermal">🧾 Thermal (58mm)</option>
               <option value="a4">🖨️ A4 Full Page</option>
             </select>
-            <button onclick="window.print()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded">🖨️ Print</button>
-            <button id="close-invoice-btn" class="px-4 py-2 bg-gray-300 hover:bg-gray-400 rounded">Close</button>
+            <button onclick="window.print()" class="px-4 py-2 bg-primary hover:bg-primary-dark text-white rounded transition-colors duration-200">🖨️ Print</button>
+            <button id="close-invoice-btn" class="px-4 py-2 bg-secondary hover:bg-secondary-dark text-white rounded transition-colors duration-200">Close</button>
           </div>
         </div>
       </div>
 
       <!-- 🧊 Fixed Cart UI -->
-      <div id="fixed-cart-ui" class="fixed bottom-0 left-64 right-0 bg-white shadow-md border-t z-50">
+      <div id="fixed-cart-ui" class="fixed bottom-0 left-64 right-0 bg-white shadow-lg border-t border-secondary-light z-50">
         <div id="cartList" class="max-h-60 overflow-y-auto p-4">
           <!-- Cart preview goes here -->
         </div>
-        <div class="border-t p-4 text-right">
-          <button id="checkoutBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded disabled:opacity-50" disabled>
+        <div class="border-t border-secondary-light p-4 text-right">
+          <button id="checkoutBtn" class="bg-primary hover:bg-primary-dark text-white px-4 py-2 rounded disabled:opacity-50 transition-colors duration-200">
             🛒 Cart
           </button>
         </div>
