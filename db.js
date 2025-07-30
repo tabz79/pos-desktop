@@ -637,6 +637,97 @@ function importDataDump(dump) {
     }
 }
 
+function importProductsFromCSV(rows) {
+  if (!Array.isArray(rows)) {
+    return { success: false, message: "Invalid input: Expected an array of rows." };
+  }
+
+  let imported = 0;
+  let skipped = 0;
+
+  const insertStmt = db.prepare(`
+    INSERT OR REPLACE INTO products (
+      product_id,
+      name,
+      category,
+      sub_category,
+      brand,
+      model_name,
+      unit,
+      price,
+      gst_percent,
+      hsn_code,
+      barcode_value,
+      stock
+    ) VALUES (
+      @product_id,
+      @name,
+      @category,
+      @sub_category,
+      @brand,
+      @model_name,
+      @unit,
+      @price,
+      @gst_percent,
+      @hsn_code,
+      @barcode_value,
+      @stock
+    )
+  `);
+
+  const importMany = db.transaction((parsedRows) => {
+    for (const product of parsedRows) {
+      insertStmt.run(product);
+    }
+  });
+
+  try {
+    const productsToInsert = [];
+
+    for (const row of rows) {
+      const name = row.name?.trim();
+      const category = row.category?.trim();
+      const productId = row.product_id?.trim();
+      
+      const sellingPrice = parseFloat(row.price_selling);
+      const taxRate = parseFloat(row.tax_rate);
+      
+      if (!productId || !name || !category || isNaN(sellingPrice) || isNaN(taxRate)) {
+        skipped++;
+        continue;
+      }
+
+      const stock = parseInt(row.stock, 10);
+
+      productsToInsert.push({
+        product_id: productId,
+        name: name,
+        category: category,
+        sub_category: row.sub_category?.trim() || null,
+        brand: row.brand?.trim() || null,
+        model_name: row.model_name?.trim() || null,
+        unit: row.unit?.trim() || null,
+        price: sellingPrice,
+        gst_percent: taxRate,
+        hsn_code: row.hsn_code?.trim() || null,
+        barcode_value: row.barcode_value?.trim() || null,
+        stock: !isNaN(stock) && stock >= 0 ? stock : 0,
+      });
+      imported++;
+    }
+
+    if (productsToInsert.length > 0) {
+      importMany(productsToInsert);
+    }
+
+    return { success: true, imported, skipped };
+
+  } catch (err) {
+    console.error("❌ Failed to import products from CSV:", err);
+    return { success: false, message: err.message || "An unknown error occurred during the transaction." };
+  }
+}
+
 module.exports = {
   db,
   getAllProducts,
@@ -651,5 +742,6 @@ module.exports = {
   getInvoiceDetails,
   getInvoices,
   exportDataDump,
-  importDataDump
+  importDataDump,
+  importProductsFromCSV
 };

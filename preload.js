@@ -7,6 +7,8 @@ contextBridge.exposeInMainWorld('api', {
   deleteProduct: (id) => ipcRenderer.invoke('delete-product', id),
   updateProduct: (product) => ipcRenderer.invoke('update-product', product),
 
+  importProductsCSV: (rows) => ipcRenderer.invoke('import-products-csv', rows),
+
   // 🧾 Save Sale with inclusive GST
   saveSale: (saleData) => ipcRenderer.invoke('save-sale', saleData),
 
@@ -28,5 +30,7 @@ contextBridge.exposeInMainWorld('api', {
   // ✅ New: Backup trigger
   backupNow: () => ipcRenderer.invoke("export-data-dump"),
 
+  // ✅ New: Import products from CSV rows
+  importProductsCSV: (rows) => ipcRenderer.invoke("import-products-csv", rows),
   // ...leave other api functions untouched
 });

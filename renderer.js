@@ -965,6 +965,12 @@ async function renderView(viewName) {
   }
 
 if (viewName === "Settings") {
+  // Show the CSV import section
+  const csvImportSection = document.getElementById('csv-import-section');
+  if (csvImportSection) {
+    csvImportSection.classList.remove('hidden');
+  }
+
   window.api.getStoreSettings().then(data => {
     if (!data) return;
     document.getElementById("storeNameInput").value = data.store_name || "";
@@ -996,6 +1002,57 @@ if (viewName === "Settings") {
       .then(() => showToast("✅ Business profile saved!"))
       .catch(() => showToast("❌ Failed to save. Try again."));
   });
+
+  // CSV Import Logic
+  const importBtn = document.getElementById('importCsvBtn');
+  const csvInput = document.getElementById('csvUploadInput');
+  const importResult = document.getElementById('importResult');
+
+  if (importBtn && csvInput && importResult) {
+    importBtn.addEventListener('click', () => {
+      const file = csvInput.files[0];
+      if (!file) {
+        importResult.textContent = 'Please select a CSV file.';
+        importResult.className = 'text-red-500';
+        return;
+      }
+
+      Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        complete: async (results) => {
+          const requiredFields = ['product_id', 'name', 'category', 'price_selling', 'tax_rate'];
+          const headers = Object.keys(results.data[0]).map(h => h.trim());
+
+          if (!requiredFields.every(field => headers.includes(field))) {
+            importResult.textContent = `❌ Invalid CSV. Missing required headers: ${requiredFields.join(', ')}`;
+            importResult.className = 'text-red-500';
+            return;
+          }
+
+          try {
+            const res = await window.api.importProductsCSV(results.data);
+            if (res.success) {
+              importResult.textContent = `✅ ${res.imported} products imported, ${res.skipped} skipped.`;
+              importResult.className = 'text-green-600';
+              csvInput.value = ''; // Clear the input
+              setTimeout(() => { importResult.textContent = '' }, 5000);
+            } else {
+              importResult.textContent = `❌ Import failed: ${res.message}`;
+              importResult.className = 'text-red-500';
+            }
+          } catch (error) {
+            importResult.textContent = `❌ An error occurred: ${error.message}`;
+            importResult.className = 'text-red-500';
+          }
+        },
+        error: (error) => {
+          importResult.textContent = `❌ CSV parsing error: ${error.message}`;
+          importResult.className = 'text-red-500';
+        }
+      });
+    });
+  }
 }
 
   }

@@ -27,6 +27,16 @@
       <!-- Scrollable Main Content Area -->
       <div id="main-scrollable-content" class="flex-1 overflow-y-auto p-6 pb-[7rem] bg-secondary-light">
         <div id="app"></div>
+
+        <!-- CSV Import Section (Initially Hidden) -->
+        <div id="csv-import-section" class="hidden mt-6 p-4 border border-secondary-light rounded-lg bg-white">
+          <h3 class="text-lg font-semibold mb-2">Import Products from CSV</h3>
+          <div class="flex items-center space-x-2">
+            <input type="file" id="csvUploadInput" accept=".csv" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary-light file:text-primary-dark hover:file:bg-primary-dark hover:file:text-white"/>
+            <button id="importCsvBtn" class="bg-primary hover:bg-primary-dark text-white px-4 py-2 rounded-md transition-colors duration-200">Import Products</button>
+          </div>
+          <p id="importResult" class="mt-2 text-sm font-medium"></p>
+        </div>
       </div>
 
       <!-- 🧾 Cart Overlay -->
@@ -162,6 +172,7 @@
   </div>
 
   <!-- Attach Renderer -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
   <script src="renderer.js"></script>
 
   <!-- 👇 Auto-hide bottom cart when overlay is active -->
