@@ -152,6 +152,17 @@ try {
   // Initialize counter if it doesn't exist
   db.prepare(`INSERT OR IGNORE INTO invoice_counter (id, current_number) VALUES (1, 0)`).run();
 
+  // ✅ Create invoice_daily_counter table
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS invoice_daily_counter (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      last_reset_date TEXT NOT NULL,
+      current_daily_number INTEGER DEFAULT 0
+    )
+  `).run();
+  // Initialize daily counter if it doesn't exist
+  db.prepare(`INSERT OR IGNORE INTO invoice_daily_counter (id, last_reset_date, current_daily_number) VALUES (1, ?, 0)`).run(new Date().toISOString().slice(0, 10));
+
   console.log("✅ SQLite DB initialized successfully.");
 } catch (err) {
   console.error("❌ Failed to load better-sqlite3:", err);

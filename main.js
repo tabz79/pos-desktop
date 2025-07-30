@@ -81,6 +81,36 @@ app.on('window-all-closed', () => {
 
 // ✅ IPC Handlers
 if (dbAPI) {
+  async function getNextInvoiceNumber() {
+    // Initialize invoice_daily_counter table and reset if new day
+    const today = new Date();
+    const todayDateString = today.toISOString().slice(0, 10); // YYYY-MM-DD
+
+    let dailyCounterRow = dbAPI.db.prepare("SELECT last_reset_date, current_daily_number FROM invoice_daily_counter WHERE id = 1").get();
+
+    if (!dailyCounterRow) {
+      // First time setup
+      dbAPI.db.prepare("INSERT INTO invoice_daily_counter (id, last_reset_date, current_daily_number) VALUES (1, ?, 0)").run(todayDateString);
+      dailyCounterRow = { last_reset_date: todayDateString, current_daily_number: 0 };
+    } else if (dailyCounterRow.last_reset_date !== todayDateString) {
+      // New day, reset counter
+      dbAPI.db.prepare("UPDATE invoice_daily_counter SET last_reset_date = ?, current_daily_number = 0 WHERE id = 1").run(todayDateString);
+      dailyCounterRow.current_daily_number = 0;
+    }
+
+    const nextSerial = dailyCounterRow.current_daily_number + 1;
+    dbAPI.db.prepare("UPDATE invoice_daily_counter SET current_daily_number = ? WHERE id = 1").run(nextSerial);
+
+    const year = today.getFullYear();
+    const month = (today.getMonth() + 1).toString().padStart(2, '0');
+    const day = today.getDate().toString().padStart(2, '0');
+    const prefix = `${year}${month}${day}`; // e.g., 20250728
+
+    const newInvoiceNo = `INV${prefix}${nextSerial.toString().padStart(4, '0')}`;
+    console.log(`Generated Invoice No: ${newInvoiceNo}`); // Debug log
+    return newInvoiceNo;
+  }
+
   ipcMain.handle('get-products', async () => {
     return dbAPI.getAllProducts();
   });
@@ -134,6 +164,7 @@ ipcMain.handle("save-sale", async (event, saleData) => {
 
     if (result.success) {
       console.log("✅ Sale saved successfully. Sale ID:", result.sale_id);
+      result.invoice_no = invoice_no; // Add invoice number to the result
     } else {
       console.error("❌ Failed to save sale:", result.message);
     }
@@ -224,30 +255,6 @@ ipcMain.handle("save-category-map", (event, data) => {
   }
 });
 
-// ✅ Generate and increment next invoice number
-ipcMain.handle('get-next-invoice-no', async () => {
-  const db = dbAPI.db;
-  const today = new Date();
-  const year = today.getFullYear();
-  const month = (today.getMonth() + 1).toString().padStart(2, '0');
-  const day = today.getDate().toString().padStart(2, '0');
-  const prefix = `${year}${month}${day}`; // e.g., 20250728
-
-  // Get current counter value and increment it
-  let counterRow = db.prepare("SELECT current_number FROM invoice_counter WHERE id = 1").get();
-  if (!counterRow) {
-    // This should ideally not happen if db.js initializes it, but as a fallback
-    db.prepare("INSERT INTO invoice_counter (id, current_number) VALUES (1, 0)").run();
-    counterRow = { current_number: 0 };
-  }
-  const nextSerial = counterRow.current_number + 1;
-  db.prepare("UPDATE invoice_counter SET current_number = ? WHERE id = 1").run(nextSerial);
-
-  const newInvoiceNo = `INV${prefix}${nextSerial.toString().padStart(4, '0')}`;
-  console.log(`Generated Invoice No: ${newInvoiceNo}`); // Debug log
-  return newInvoiceNo;
-});
-
 // --- DASHBOARD & REPORTS ---
 ipcMain.handle('get-dashboard-stats', async () => {
   return dbAPI.getDashboardStats();
@@ -263,5 +270,10 @@ ipcMain.handle('get-invoice-details', async (event, id) => {
 
 ipcMain.handle('get-invoices', async (event, options) => {
   return dbAPI.getInvoices(options);
+});
+
+// ✅ Generate and increment next invoice number
+ipcMain.handle('get-next-invoice-no', async () => {
+  return await getNextInvoiceNumber();
 });
 }

@@ -72,6 +72,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   let editingProductId = null;
   let allProducts = [];
   const cart = [];
+  let activeInvoiceNo = null; // New variable to store the generated invoice number
   let lastSale = [];
   let salesProductList = null;
 
@@ -1064,18 +1065,7 @@ if (mainContent) {
 async function renderCartOverlay() {
   const invoiceInput = document.getElementById("customerInvoiceNo");
   if (invoiceInput) {
-    try {
-      const backendInvoiceNo = await window.api.getNextInvoiceNo();
-      if (backendInvoiceNo) {
-        invoiceInput.value = backendInvoiceNo;
-      } else {
-        invoiceInput.value = "INV_FAILED";
-        showToast("⚠️ Failed to get invoice number.");
-      }
-    } catch (err) {
-      console.error("⚠️ Invoice fetch failed:", err);
-      invoiceInput.value = "INV_ERR";
-    }
+    invoiceInput.value = activeInvoiceNo || ""; // Use activeInvoiceNo
   }
 
   // ✅ DO NOT set invoiceInput.value again here
@@ -1131,7 +1121,7 @@ async function renderCartOverlay() {
   if (confirmBtn) {
 	  confirmBtn.disabled = false; // 👈 this is what’s missing!
     confirmBtn.onclick = async () => {
-      const invoiceNo = document.getElementById("customerInvoiceNo")?.value?.trim();
+      const invoiceNo = document.getElementById("customerInvoiceNo")?.value?.trim(); // Get the value from the input
       const name = document.getElementById("custName")?.value?.trim() || null;
       const phone = document.getElementById("custPhone")?.value?.trim() || null;
       const gstin = document.getElementById("custGSTIN")?.value?.trim() || null;
@@ -1168,7 +1158,7 @@ async function renderCartOverlay() {
       });
 const paymentMethod = document.getElementById("paymentMode")?.value?.trim() || "Cash";
 const salePayload = {
-  invoice_no: invoiceNo,
+  invoice_no: activeInvoiceNo, // Use the stored activeInvoiceNo
   timestamp: new Date().toISOString(),
   customer_name: name,
   customer_phone: phone,
@@ -1198,6 +1188,7 @@ try {
     cart.length = 0;
     updateCartUI();
     document.getElementById("cartOverlay").classList.add("hidden");
+    activeInvoiceNo = null; // Clear activeInvoiceNo after successful sale
 
     // ✅ Save serial part for preview
     if (invoiceNo.length >= 15) {
@@ -1445,6 +1436,20 @@ window.addToCart = async function (id, name, price) {
   if (!product) {
     showToast("❌ Product not found.");
     return;
+  }
+
+  if (cart.length === 0 && activeInvoiceNo === null) {
+    try {
+      activeInvoiceNo = await window.api.getNextInvoiceNo();
+      if (!activeInvoiceNo) {
+        showToast("⚠️ Failed to generate invoice number. Try again.");
+        return; // Prevent adding to cart if invoice number generation fails
+      }
+    } catch (err) {
+      console.error("⚠️ Invoice number generation failed:", err);
+      showToast("⚠️ Failed to generate invoice number. Try again.");
+      return; // Prevent adding to cart if invoice number generation fails
+    }
   }
 
   if (existing) {
