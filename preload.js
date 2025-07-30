@@ -20,5 +20,10 @@ contextBridge.exposeInMainWorld('api', {
   getDashboardStats: () => ipcRenderer.invoke('get-dashboard-stats'),
   getRecentInvoices: () => ipcRenderer.invoke('get-recent-invoices'),
   getInvoiceDetails: (id) => ipcRenderer.invoke('get-invoice-details', id),
-  getInvoices: (options) => ipcRenderer.invoke('get-invoices', options)
+  getInvoices: (options) => ipcRenderer.invoke('get-invoices', options),
+
+  // ✅ New: Sub-Category fetcher
+  getUniqueSubCategories: (category) => ipcRenderer.invoke("getUniqueSubCategories", category),
+
+  // ...leave other api functions untouched
 });

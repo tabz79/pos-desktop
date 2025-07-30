@@ -4,6 +4,7 @@ let db;
 try {
   const Database = require('better-sqlite3');
   const dbPath = path.join(__dirname, 'pos.db');
+  console.log("📁 [DEBUG] DB path resolved to:", dbPath);
   db = new Database(dbPath);
 
   db.pragma('foreign_keys = ON');

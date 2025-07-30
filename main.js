@@ -272,6 +272,18 @@ ipcMain.handle('get-invoices', async (event, options) => {
   return dbAPI.getInvoices(options);
 });
 
+ipcMain.handle("getUniqueSubCategories", (event, category) => {
+    console.log(`Fetching unique sub-categories for category: ${category}`);
+    try {
+        const query = `SELECT DISTINCT sub_category FROM products WHERE category = ? AND sub_category IS NOT NULL`;
+        const rows = dbAPI.db.prepare(query).all(category);
+        return rows.map(r => r.sub_category).filter(Boolean);
+    } catch (error) {
+        console.error("Error fetching sub-categories:", error);
+        return [];
+    }
+});
+
 // ✅ Generate and increment next invoice number
 ipcMain.handle('get-next-invoice-no', async () => {
   return await getNextInvoiceNumber();

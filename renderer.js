@@ -498,7 +498,7 @@ function setupProductView() {
   async function renderProducts() {
     allProducts = await window.api.getProducts();
     populateCategoryDropdown(allProducts, document.getElementById("filterCategory"));
-    populateSubCategoryDropdown(allProducts, document.getElementById("filterCategory").value, document.getElementById("filterSubCategory"));
+    await updateProductFilterSubCategoryDropdown(document.getElementById("filterCategory").value);
     applyProductFilters();
   }
 
@@ -537,9 +537,26 @@ function setupProductView() {
   renderProducts();
 
   document.getElementById("searchInput").addEventListener("input", applyProductFilters);
-  document.getElementById("filterCategory").addEventListener("change", () => {
-    populateSubCategoryDropdown(allProducts, document.getElementById("filterCategory").value, document.getElementById("filterSubCategory"));
-    document.getElementById("filterSubCategory").value = "";
+  document.getElementById("filterCategory").addEventListener("change", async (e) => {
+    const selectedCategory = e.target.value;
+    const subCategoryDropdown = document.getElementById("filterSubCategory");
+    if (!subCategoryDropdown) return;
+
+    if (selectedCategory) {
+      const subCategories = await window.api.getUniqueSubCategories(selectedCategory);
+      subCategoryDropdown.innerHTML = `<option value="">All Sub Categories</option>`;
+      subCategories.forEach(sub => {
+        const opt = document.createElement("option");
+        opt.value = sub;
+        opt.textContent = sub;
+        subCategoryDropdown.appendChild(opt);
+      });
+      subCategoryDropdown.disabled = false;
+    } else {
+      subCategoryDropdown.innerHTML = `<option value="">All Sub Categories</option>`;
+      subCategoryDropdown.disabled = true;
+    }
+    subCategoryDropdown.value = "";
     applyProductFilters();
   });
   document.getElementById("filterSubCategory").addEventListener("change", applyProductFilters);
@@ -582,23 +599,30 @@ function setupProductView() {
 
 
   if (categorySelect && hsnInput && gstInput) {
-    categorySelect.addEventListener("change", () => {
+    categorySelect.addEventListener("change", async () => {
       const selectedCategory = categorySelect.value;
       const mapping = categoryHSNMap[selectedCategory];
       if (mapping) {
         hsnInput.value = mapping.hsn || "";
         gstInput.value = mapping.gst || "";
       }
+      await updateProductModalSubCategoryDropdown(selectedCategory);
+      subCategoryInput.value = ""; // Reset sub-category selection
+    });
+
+    document.getElementById("productCategory").addEventListener("change", async (e) => {
+      const selectedCategory = e.target.value;
+      await updateProductModalSubCategoryDropdown(selectedCategory);
+      document.getElementById("productSubCategory").value = "";
     });
   }
 
   addBtn.addEventListener("click", () => {
     editingProductId = null;
 
-    // ✅ Populate sub-category dropdown with all existing sub-categories
-    const allSubCategories = Array.from(new Set(allProducts.map(p => p.sub_category).filter(Boolean)));
-    subCategoryInput.innerHTML = '<option value="">Select Sub Category</option>' +
-      allSubCategories.map(sub => `<option value="${sub}">${sub}</option>`).join('');
+    // Clear sub-category dropdown and disable it initially
+    subCategoryInput.innerHTML = '<option value="">Select Sub Category</option>';
+    subCategoryInput.disabled = true;
 
     // Clear all fields in the modal form
     const fieldsToClear = [
@@ -751,22 +775,62 @@ function populateCategoryDropdown(products, dropdownElement) {
   });
 }
 
-function populateSubCategoryDropdown(products, dropdownElement, selectedCategory) {
-  if (!dropdownElement || !products) return;
+async function updateSalesSubCategoryDropdown(selectedCategory) {
+  const dropdown = document.getElementById("salesFilterSubCategory");
+  if (!dropdown) return;
 
-  const filteredProducts = selectedCategory
-    ? products.filter(p => p.category === selectedCategory)
-    : products;
-
-  const uniqueSubCategories = [...new Set(filteredProducts.map(p => p.sub_category).filter(Boolean))];
-  dropdownElement.innerHTML = `<option value="">All</option>`;
-  uniqueSubCategories.forEach(sub => {
-    const option = document.createElement("option");
-    option.value = sub;
-    option.textContent = sub;
-    dropdownElement.appendChild(option);
-  });
+  if (selectedCategory) {
+    const subCategories = await window.api.getUniqueSubCategories(selectedCategory);
+    dropdown.innerHTML = `<option value="">All</option>`;
+    subCategories.forEach(sub => {
+      const opt = document.createElement("option");
+      opt.value = sub;
+      opt.textContent = sub;
+      dropdown.appendChild(opt);
+    });
+    dropdown.disabled = false;
+  } else {
+    dropdown.innerHTML = `<option value="">All</option>`;
+    dropdown.disabled = true;
+  }
 }
+
+async function updateProductFilterSubCategoryDropdown(selectedCategory) {
+  const dropdown = document.getElementById("filterSubCategory");
+  if (!dropdown) return;
+
+  if (selectedCategory) {
+    const subCategories = await window.api.getUniqueSubCategories(selectedCategory);
+    dropdown.innerHTML = `<option value="">All Sub Categories</option>`;
+    subCategories.forEach(sub => {
+      const opt = document.createElement("option");
+      opt.value = sub;
+      opt.textContent = sub;
+      dropdown.appendChild(opt);
+    });
+    dropdown.disabled = false;
+  } else {
+    dropdown.innerHTML = `<option value="">All Sub Categories</option>`;
+    dropdown.disabled = true;
+  }
+}
+
+async function updateProductModalSubCategoryDropdown(category) {
+  const subCatInput = document.getElementById("productSubCategory");
+  if (!subCatInput || !category) return;
+
+  const subCategories = await window.api.getUniqueSubCategories(category);
+  subCatInput.innerHTML = `<option value="">Select Sub Category</option>`;
+  subCategories.forEach(sub => {
+    const opt = document.createElement("option");
+    opt.value = sub;
+    opt.textContent = sub;
+    subCatInput.appendChild(opt);
+  });
+  subCatInput.disabled = false;
+}
+
+
 async function renderView(viewName) {
   app.innerHTML = views[viewName] || `<p>Unknown view: ${viewName}</p>`;
 
@@ -837,10 +901,11 @@ async function renderView(viewName) {
 
     // Event Listeners for sales filters
     salesSearchInput.addEventListener("input", applySalesFilters);
-    salesFilterCategory.addEventListener("change", () => {
-      populateSubCategoryDropdown(allProducts, salesFilterCategory.value, salesFilterSubCategory);
-      salesFilterSubCategory.value = ""; // Reset sub-category when category changes
-      applySalesFilters();
+    salesFilterCategory.addEventListener("change", async (e) => {
+      const selectedCategory = e.target.value;
+      await updateSalesSubCategoryDropdown(selectedCategory);
+      document.getElementById("salesFilterSubCategory").value = "";
+      applySalesFilters(); // this is already defined
     });
     salesFilterSubCategory.addEventListener("change", applySalesFilters);
 
@@ -1540,8 +1605,19 @@ window.updateCartItem = async function (id, field, value) {
         categorySelect.innerHTML += `<option value="${category}">${category}</option>`;
       }
       categorySelect.value = category;
-      // Trigger change event to populate HSN/GST
+      // Trigger change event to populate HSN/GST and sub-category
       categorySelect.dispatchEvent(new Event('change'));
+    }
+
+    // Populate sub-category dropdown for editing
+    if (category) {
+      (async () => {
+        await updateProductModalSubCategoryDropdown(category);
+        subCategoryInput.value = allProducts.find(p => p.id === id)?.sub_category || "";
+      })();
+    } else {
+      subCategoryInput.innerHTML = `<option value="">Select Sub Category</option>`;
+      subCategoryInput.disabled = true;
     }
     
     // Set other fields if they exist
