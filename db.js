@@ -475,6 +475,7 @@ function getInvoices({ page = 1, limit = 15, startDate, endDate, searchQuery = '
   }
 }
 
+/*
 // 🧠 Safe schema patch for store_settings (runs only if columns are missing)
 try {
   const storeCols = db.prepare(`PRAGMA table_info(store_settings)`).all().map(c => c.name);
@@ -492,9 +493,19 @@ try {
       console.log(`✅ Added column: ${col.name} to store_settings`);
     }
   });
+
+  // Add schema versioning
+  if (!storeCols.includes('schema_version')) {
+      db.prepare(`ALTER TABLE store_settings ADD COLUMN schema_version TEXT DEFAULT '1.0'`).run();
+      db.prepare(`UPDATE store_settings SET schema_version = '1.1' WHERE id = 1`).run();
+      console.log(`✅ Added and updated schema_version to 1.1`);
+  }
+
 } catch (err) {
   console.error("❌ Failed to patch store_settings schema:", err);
 }
+*/
+
 // ✅ Save or update the singleton store settings
 function saveStoreSettings(payload) {
   try {
@@ -544,6 +555,88 @@ function getStoreSettings() {
     return null;
   }
 }
+
+// --- DATA DUMP & RESTORE ---
+
+// ✅ Export all critical data
+function exportDataDump() {
+    console.log('📦 Starting data export...');
+    try {
+        const products = db.prepare('SELECT * FROM products').all();
+        const sales = db.prepare('SELECT * FROM sales').all();
+        const sale_items = db.prepare('SELECT * FROM sale_items').all();
+        const store_settings = db.prepare('SELECT * FROM store_settings WHERE id = 1').get();
+        
+        const dump = { products, sales, sale_items, store_settings };
+        console.log('✅ Data export completed successfully.');
+        return { success: true, data: dump };
+    } catch (err) {
+        console.error('❌ Failed to export data:', err);
+        return { success: false, message: err.message };
+    }
+}
+
+// ✅ Import data from a dump file
+function importDataDump(dump) {
+    if (!dump || !dump.products || !dump.sales || !dump.sale_items || !dump.store_settings) {
+        return { success: false, message: "Invalid data dump object provided." };
+    }
+
+    const { products, sales, sale_items, store_settings } = dump;
+
+    const importTransaction = db.transaction(() => {
+        // 1. Clear existing data
+        db.prepare('DELETE FROM sale_items').run();
+        db.prepare('DELETE FROM sales').run();
+        db.prepare('DELETE FROM products').run();
+        db.prepare('DELETE FROM store_settings').run();
+        console.log('🗑️ Cleared existing data from tables.');
+
+        // 2. Insert products
+        const productStmt = db.prepare(`
+            INSERT INTO products (id, product_id, name, price, stock, category, sub_category, brand, model_name, unit, hsn_code, gst_percent, barcode_value)
+            VALUES (@id, @product_id, @name, @price, @stock, @category, @sub_category, @brand, @model_name, @unit, @hsn_code, @gst_percent, @barcode_value)
+        `);
+        for (const product of products) productStmt.run(product);
+        console.log(`Imported ${products.length} products.`);
+
+        // 3. Insert sales
+        const saleStmt = db.prepare(`
+            INSERT INTO sales (id, total, timestamp, invoice_no, payment_method, customer_name, customer_phone, customer_gstin)
+            VALUES (@id, @total, @timestamp, @invoice_no, @payment_method, @customer_name, @customer_phone, @customer_gstin)
+        `);
+        for (const sale of sales) saleStmt.run(sale);
+        console.log(`Imported ${sales.length} sales.`);
+
+        // 4. Insert sale items
+        const saleItemStmt = db.prepare(`
+            INSERT INTO sale_items (id, sale_id, product_id, name, price, quantity, hsn_code, gst_percent, taxable_value, gst_amount, cgst, sgst)
+            VALUES (@id, @sale_id, @product_id, @name, @price, @quantity, @hsn_code, @gst_percent, @taxable_value, @gst_amount, @cgst, @sgst)
+        `);
+        for (const item of sale_items) saleItemStmt.run(item);
+        console.log(`Imported ${sale_items.length} sale items.`);
+
+        // 5. Insert store settings
+        if (store_settings) {
+            const settingsStmt = db.prepare(`
+                INSERT INTO store_settings (id, store_name, store_address, store_subtitle, store_phone, store_gstin, store_footer, store_fssai, schema_version)
+                VALUES (@id, @store_name, @store_address, @store_subtitle, @store_phone, @store_gstin, @store_footer, @store_fssai, @schema_version)
+            `);
+            settingsStmt.run(store_settings);
+            console.log('Imported store settings.');
+        }
+    });
+
+    try {
+        importTransaction();
+        console.log('✅ Data import transaction completed successfully.');
+        return { success: true, message: 'Data imported successfully.' };
+    } catch (err) {
+        console.error("❌ Data import failed:", err);
+        return { success: false, message: err.message };
+    }
+}
+
 module.exports = {
   db,
   getAllProducts,
@@ -556,5 +649,7 @@ module.exports = {
   getDashboardStats,
   getRecentInvoices,
   getInvoiceDetails,
-  getInvoices
+  getInvoices,
+  exportDataDump,
+  importDataDump
 };

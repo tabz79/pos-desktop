@@ -25,5 +25,8 @@ contextBridge.exposeInMainWorld('api', {
   // ✅ New: Sub-Category fetcher
   getUniqueSubCategories: (category) => ipcRenderer.invoke("getUniqueSubCategories", category),
 
+  // ✅ New: Backup trigger
+  backupNow: () => ipcRenderer.invoke("export-data-dump"),
+
   // ...leave other api functions untouched
 });

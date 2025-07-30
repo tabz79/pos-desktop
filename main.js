@@ -288,4 +288,17 @@ ipcMain.handle("getUniqueSubCategories", (event, category) => {
 ipcMain.handle('get-next-invoice-no', async () => {
   return await getNextInvoiceNumber();
 });
+
+// --- DATA DUMP & RESTORE ---
+try {
+  ipcMain.handle("export-data-dump", async () => {
+    return dbAPI.exportDataDump();
+  });
+
+  ipcMain.handle("import-data-dump", async (event, payload) => {
+    return dbAPI.importDataDump(payload);
+  });
+} catch (err) {
+  console.error("❌ Failed to register data dump handlers:", err);
+}
 }
