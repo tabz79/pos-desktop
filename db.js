@@ -165,6 +165,13 @@ try {
   db.prepare(`INSERT OR IGNORE INTO invoice_daily_counter (id, last_reset_date, current_daily_number) VALUES (1, ?, 0)`).run(new Date().toISOString().slice(0, 10));
 
   console.log("✅ SQLite DB initialized successfully.");
+// ⚡ Index boost for Products tab
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_products_id ON products(id DESC);
+  CREATE INDEX IF NOT EXISTS idx_products_category ON products(category);
+  CREATE INDEX IF NOT EXISTS idx_products_sub_category ON products(sub_category);
+  CREATE INDEX IF NOT EXISTS idx_products_brand ON products(brand);
+`);
 } catch (err) {
   console.error("❌ Failed to load better-sqlite3:", err);
   db = null;
@@ -172,8 +179,16 @@ try {
 
 // ✅ Get all products
 function getAllProducts() {
-  const stmt = db.prepare('SELECT * FROM products ORDER BY id DESC');
-  return stmt.all();
+  console.time("⏱️ getAllProducts");
+  const stmt = db.prepare(`
+    SELECT id, product_id, name, category, sub_category, brand, model_name,
+           price, stock, gst_percent
+    FROM products
+    ORDER BY id DESC
+  `);
+  const result = stmt.all();
+  console.timeEnd("⏱️ getAllProducts");
+  return result;
 }
 
 // ✅ Add a new product

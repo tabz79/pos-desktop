@@ -67,14 +67,39 @@ function parsePriceFromModel(model_name = '') {
 
 // ✅ POS Renderer Script with Live Stock Update, Quantity Control, Print Layout, and Business Profile Support
 
+function debounce(func, delay) {
+  let timeout;
+  return function(...args) {
+    const context = this;
+    clearTimeout(timeout);
+    timeout = setTimeout(() => func.apply(context, args), delay);
+  };
+}
+
 document.addEventListener("DOMContentLoaded", async () => {
   const app = document.getElementById("app");
   let editingProductId = null;
   let allProducts = [];
+  let productCache = null; // Cached product data
+  let productsLoaded = false; // ✅ Flag to track if products are loaded
   const cart = [];
   let activeInvoiceNo = null; // New variable to store the generated invoice number
   let lastSale = [];
   let salesProductList = null;
+
+  // ✅ Fix Scroll Bleed: Dynamically adjust padding based on cart height
+  const mainContent = document.getElementById('main-scrollable-content');
+  const fixedCart = document.getElementById('fixed-cart-ui');
+  if (mainContent && fixedCart) {
+    const cartObserver = new ResizeObserver(entries => {
+      for (let entry of entries) {
+        const cartHeight = entry.contentRect.height;
+        mainContent.style.paddingBottom = `${cartHeight}px`;
+      }
+    });
+    cartObserver.observe(fixedCart);
+  }
+
 
   const views = {
     Dashboard: `
@@ -164,6 +189,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           </thead>
           <tbody id="productTable"></tbody>
         </table>
+        <div id="productPaginationControls" class="flex justify-center items-center space-x-2 mt-4"></div>
 
         <div id="productModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
           <div class="bg-white p-6 rounded shadow-lg w-full max-w-md mx-auto">
@@ -215,6 +241,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           </div>
         </div>
         <div id="salesProductList" class="grid grid-cols-2 gap-4 mb-6"></div>
+        <div id="salesPaginationControls" class="flex justify-center items-center space-x-2 mt-4"></div>
       </div>
     `,
     InvoiceHistory: `
@@ -443,6 +470,9 @@ window.viewInvoice = async function(id) {
 }
 
 function setupProductView() {
+  let currentPage = 1; // Current page for product pagination
+  const itemsPerPage = 50; // Number of products to display per page
+
   const addBtn = document.getElementById("addProductBtn");
   const modal = document.getElementById("productModal");
   const modalTitle = document.getElementById("modalTitle");
@@ -491,7 +521,7 @@ function setupProductView() {
     if (selectedSubCategory) {
       filtered = filtered.filter(p => p.sub_category === selectedSubCategory);
     }
-    displayFilteredProducts(filtered);
+    displayFilteredProducts(filtered, currentPage, itemsPerPage);
   }
 
   // Initial population for Products tab
@@ -502,9 +532,15 @@ function setupProductView() {
     applyProductFilters();
   }
 
-  function displayFilteredProducts(products) {
+  function displayFilteredProducts(products, page, perPage) {
     const productTable = document.getElementById("productTable");
-    productTable.innerHTML = products.map(p => `
+    console.time("DOM_rendering_loop");
+
+    const startIndex = (page - 1) * perPage;
+    const endIndex = startIndex + perPage;
+    const paginatedProducts = products.slice(startIndex, endIndex);
+
+    productTable.innerHTML = paginatedProducts.map(p => `
       <tr>
         <td class="p-2">${p.name}</td>
         <td class="p-2">${p.category || ''}</td>
@@ -520,7 +556,50 @@ function setupProductView() {
         </td>
       </tr>
     `).join("");
+    console.timeEnd("DOM_rendering_loop");
+
+    const totalPages = Math.ceil(products.length / perPage);
+    renderPaginationControls(totalPages, page);
   }
+  function renderPaginationControls(totalPages) {
+    const paginationContainer = document.getElementById('productPaginationControls');
+    if (!paginationContainer) {
+      // Add a div for pagination controls if it doesn't exist
+      const productListDiv = document.querySelector('#app > div > div:nth-child(1)'); // Assuming this is the parent of the table
+      if (productListDiv) {
+        const newPaginationDiv = document.createElement('div');
+        newPaginationDiv.id = 'productPaginationControls';
+        newPaginationDiv.className = 'flex justify-center items-center space-x-2 mt-4';
+        productListDiv.appendChild(newPaginationDiv);
+      } else {
+        console.error("Could not find a suitable parent for pagination controls.");
+        return;
+      }
+    }
+
+    paginationContainer.innerHTML = `
+      <button id="prevPageBtn" class="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300 ${currentPage === 1 ? 'opacity-50 cursor-not-allowed' : ''}" ${currentPage === 1 ? 'disabled' : ''}>Previous</button>
+      <span class="text-sm">Page ${currentPage} of ${totalPages}</span>
+      <button id="nextPageBtn" class="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300 ${currentPage === totalPages ? 'opacity-50 cursor-not-allowed' : ''}" ${currentPage === totalPages ? 'disabled' : ''}>Next</button>
+    `;
+
+    document.getElementById('prevPageBtn').onclick = () => {
+      if (currentPage > 1) {
+        currentPage--;
+        console.log("Page:", currentPage, "/", totalPages);
+        applyProductFilters(); // Re-apply filters with new page
+      }
+    };
+
+    document.getElementById('nextPageBtn').onclick = () => {
+      if (currentPage < totalPages) {
+        currentPage++;
+        console.log("Page:", currentPage, "/", totalPages);
+        applyProductFilters(); // Re-apply filters with new page
+      }
+    };
+  }
+
   window.deleteProduct = async function(id) {
   const confirmed = confirm("Are you sure you want to delete?");
   if (!confirmed) return;
@@ -847,13 +926,35 @@ async function renderView(viewName) {
     await setupDashboardView();
   }
   if (viewName === "Products") {
+    performance.mark('renderView_Products_start');
+    const productTable = document.getElementById('productTable');
+    if (!productCache) {
+      if(productTable) productTable.innerHTML = '<tr><td colspan="9" class="text-center p-4">Loading products...</td></tr>';
+      console.time("IPC_getProducts");
+      productCache = await window.api.getProducts();
+      console.timeEnd("IPC_getProducts");
+    }
+    allProducts = productCache;
+    productsLoaded = true;
+    currentPage = 1; // Reset to first page on tab switch
     await setupProductView();
+    performance.mark('renderView_Products_end');
+    performance.measure('renderView_Products_duration', 'renderView_Products_start', 'renderView_Products_end');
   }
   if (viewName === "InvoiceHistory") {
     await setupInvoiceHistoryView();
   }
 
   if (viewName === "Sales") {
+    currentSalesPage = 1; // Reset to first page on tab switch
+    const itemsPerSalesPage = 50; // Number of products to display per page
+
+    if (!productsLoaded) {
+        const salesProductList = document.getElementById('salesProductList');
+        if(salesProductList) salesProductList.innerHTML = '<p class="text-center col-span-full">Loading products...</p>';
+        allProducts = await window.api.getProducts();
+        productsLoaded = true;
+    }
     // Pressing Enter in any input should trigger blur (and thereby onchange)
     const cartOverlay = document.getElementById("cartOverlay");
     if (cartOverlay) {
@@ -869,10 +970,6 @@ async function renderView(viewName) {
     salesProductList = document.getElementById("salesProductList");
     salesProductList.className = "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 mb-6"; // Updated grid classes
 
-    // Ensure allProducts is fetched before setting up filters
-    allProducts = await window.api.getProducts();
-    console.log("Sales tab: allProducts after fetch:", allProducts);
-
     const salesSearchInput = document.getElementById("salesSearchInput");
     const salesFilterCategory = document.getElementById("salesFilterCategory");
     const salesFilterSubCategory = document.getElementById("salesFilterSubCategory");
@@ -880,36 +977,75 @@ async function renderView(viewName) {
     // Populate category dropdown for sales
     populateCategoryDropdown(allProducts, salesFilterCategory);
 
-    // Function to apply filters for sales products
-    function applySalesFilters() {
-      const nameTerm = salesSearchInput.value.trim().toLowerCase();
-      const selectedCategory = salesFilterCategory.value;
-      const selectedSubCategory = salesFilterSubCategory.value;
-      let filtered = allProducts;
+    
 
-      if (nameTerm) {
-        filtered = filtered.filter(p => p.name.toLowerCase().includes(nameTerm));
-      }
+    // Event Listeners for sales filters
+    salesSearchInput.addEventListener("input", debounce(applySalesFilters, 300));
+    salesFilterCategory.addEventListener("change", async (e) => {
+      const selectedCategory = e.target.value;
+      await updateSalesSubCategoryDropdown(selectedCategory);
+      document.getElementById("salesFilterSubCategory").value = "";
+      currentSalesPage = 1; // Reset page on filter change
+      applySalesFilters();
+    });
+    salesFilterSubCategory.addEventListener("change", (e) => {
+      currentSalesPage = 1; // Reset page on filter change
+      applySalesFilters();
+    });
+
+    // Function to apply filters for sales products
+    async function applySalesFilters() {
+      let filtered = [...allProducts];
+      const selectedCategory = document.getElementById("salesFilterCategory").value;
+      const selectedSubCategory = document.getElementById("salesFilterSubCategory").value;
+      const salesSearch = document.getElementById("salesSearchInput").value.toLowerCase();
+
       if (selectedCategory) {
         filtered = filtered.filter(p => p.category === selectedCategory);
       }
       if (selectedSubCategory) {
         filtered = filtered.filter(p => p.sub_category === selectedSubCategory);
       }
-      renderSalesProducts(filtered); // Pass filtered products to render function
+      if (salesSearch) {
+        filtered = filtered.filter(p =>
+          p.name.toLowerCase().includes(salesSearch) ||
+          (p.brand && p.brand.toLowerCase().includes(salesSearch)) ||
+          (p.model_name && p.model_name.toLowerCase().includes(salesSearch))
+        );
+      }
+
+      renderSalesProducts(filtered, currentSalesPage, itemsPerSalesPage);
     }
 
-    // Event Listeners for sales filters
-    salesSearchInput.addEventListener("input", applySalesFilters);
-    salesFilterCategory.addEventListener("change", async (e) => {
-      const selectedCategory = e.target.value;
-      await updateSalesSubCategoryDropdown(selectedCategory);
-      document.getElementById("salesFilterSubCategory").value = "";
-      applySalesFilters(); // this is already defined
-    });
-    salesFilterSubCategory.addEventListener("change", applySalesFilters);
+    function renderSalesPaginationControls(totalPages, currentPage) {
+      const paginationContainer = document.getElementById('salesPaginationControls');
+      if (!paginationContainer) {
+        console.error("Sales pagination container not found.");
+        return;
+      }
 
-    await renderSalesProducts(allProducts); // Initial render of all products
+      paginationContainer.innerHTML = `
+        <button id="prevSalesPageBtn" class="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300 ${currentPage === 1 ? 'opacity-50 cursor-not-allowed' : ''}" ${currentPage === 1 ? 'disabled' : ''}>Previous</button>
+        <span class="text-sm">Page ${currentPage} of ${totalPages}</span>
+        <button id="nextSalesPageBtn" class="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300 ${currentPage === totalPages ? 'opacity-50 cursor-not-allowed' : ''}" ${currentPage === totalPages ? 'disabled' : ''}>Next</button>
+      `;
+
+      document.getElementById('prevSalesPageBtn').onclick = () => {
+        if (currentPage > 1) {
+          currentSalesPage--;
+          applySalesFilters();
+        }
+      };
+
+      document.getElementById('nextSalesPageBtn').onclick = () => {
+        if (currentPage < totalPages) {
+          currentSalesPage++;
+          applySalesFilters();
+        }
+      };
+    }
+
+    await renderSalesProducts(allProducts, currentSalesPage, itemsPerSalesPage); // Initial render of all products
 
     const checkoutBtn = document.querySelector("#fixed-cart-ui #checkoutBtn");
     if (checkoutBtn) {
@@ -922,6 +1058,37 @@ async function renderView(viewName) {
         }
       });
     }
+
+    // Barcode scanner logic
+    let barcodeBuffer = '';
+    let lastScanTime = 0;
+    const SCANNER_TIMEOUT = 50; // Max time between characters to consider it one scan
+
+    window.addEventListener('keydown', (e) => {
+      const now = Date.now();
+      // If a significant pause, or if it's a non-alphanumeric key (but not Enter), reset buffer
+      if (now - lastScanTime > SCANNER_TIMEOUT || (e.key.length > 1 && e.key !== 'Enter')) {
+        barcodeBuffer = '';
+      }
+      lastScanTime = now;
+
+      if (e.key === 'Enter') {
+        if (barcodeBuffer.length > 0) {
+          const scannedBarcode = barcodeBuffer;
+          barcodeBuffer = ''; // Clear buffer immediately
+          console.log('Scanned Barcode:', scannedBarcode);
+          const product = allProducts.find(p => p.barcode_value === scannedBarcode || p.product_id === scannedBarcode);
+          if (product) {
+            addToCart(product.id, product.name, product.price);
+            showToast(`✅ Added ${product.name} from scan`);
+          } else {
+            showToast(`❌ Product with barcode ${scannedBarcode} not found.`);
+          }
+        }
+      } else if (e.key.length === 1) { // Only append single character keys
+        barcodeBuffer += e.key;
+      }
+    });
   }
 
   // Define the event handlers inside renderView to avoid global pollution
@@ -1058,14 +1225,42 @@ if (viewName === "Settings") {
   }
   
 
-  async function renderSalesProducts(productsToRender = allProducts) {
+  function renderSalesPaginationControls(totalPages, currentPage) {
+      const paginationContainer = document.getElementById('salesPaginationControls');
+      if (!paginationContainer) {
+        console.error("Sales pagination container not found.");
+        return;
+      }
+
+      paginationContainer.innerHTML = `
+        <button id="prevSalesPageBtn" class="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300 ${currentPage === 1 ? 'opacity-50 cursor-not-allowed' : ''}" ${currentPage === 1 ? 'disabled' : ''}>Previous</button>
+        <span class="text-sm">Page ${currentPage} of ${totalPages}</span>
+        <button id="nextSalesPageBtn" class="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300 ${currentPage === totalPages ? 'opacity-50 cursor-not-allowed' : ''}" ${currentPage === totalPages ? 'disabled' : ''}>Next</button>
+      `;
+
+      document.getElementById('prevSalesPageBtn').onclick = () => {
+        if (currentPage > 1) {
+          currentSalesPage--;
+          applySalesFilters();
+        }
+      };
+
+      document.getElementById('nextSalesPageBtn').onclick = () => {
+        if (currentPage < totalPages) {
+          currentSalesPage++;
+          applySalesFilters();
+        }
+      };
+    }
+
+  async function renderSalesProducts(productsToRender = allProducts, page = 1, perPage = 50) {
     console.log("renderSalesProducts: productsToRender received:", productsToRender);
     if (!salesProductList) {
       console.error("salesProductList element not found!");
       return;
     }
     console.log("salesProductList element found:", salesProductList);
-    salesProductList.innerHTML = "";
+    salesProductList.innerHTML = ""; // Clear existing products
 
     const products = productsToRender.length > 0 ? productsToRender : allProducts;
 
@@ -1075,10 +1270,17 @@ if (viewName === "Settings") {
       return;
     }
 
-    products.forEach(p => {
+    const startIndex = (page - 1) * perPage;
+    const endIndex = startIndex + perPage;
+    const paginatedProducts = products.slice(startIndex, endIndex);
+
+    console.time("DOM_rendering_sales");
+    const fragment = document.createDocumentFragment();
+
+    paginatedProducts.forEach(p => {
       const card = document.createElement("div");
       card.className = "bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow duration-300 overflow-hidden flex flex-col";
-      const safeName = p.name.replace(/'/g, "'");
+      const safeName = p.name.replace(/'/g, "\\'");
       card.innerHTML = `
         <div class="p-4 flex-grow">
           <h3 class="text-lg font-semibold text-gray-800 mb-1">${p.name}</h3>
@@ -1095,10 +1297,14 @@ if (viewName === "Settings") {
           ${p.stock === 0 ? 'Out of Stock' : 'Add to Cart'}
         </button>
       `;
-      salesProductList.appendChild(card);
-      console.log("Appended card for product:", p.name);
+      fragment.appendChild(card);
     });
+    salesProductList.appendChild(fragment);
+    console.timeEnd("DOM_rendering_sales");
     await updateCartUI();
+
+    const totalPages = Math.ceil(products.length / perPage);
+    renderSalesPaginationControls(totalPages, page);
   }
 
 async function updateCartUI() {
