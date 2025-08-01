@@ -62,6 +62,12 @@ function debounce(func, delay) {
   };
 }
 
+// Stub for applySalesFilters to prevent ReferenceError before Sales view is rendered
+function applySalesFilters() {
+  // This function will be properly defined when the Sales view is rendered.
+  // This stub prevents runtime errors if called prematurely.
+}
+
 document.addEventListener("DOMContentLoaded", async () => {
   const app = document.getElementById("app");
   let editingProductId = null;
@@ -72,6 +78,65 @@ document.addEventListener("DOMContentLoaded", async () => {
   let activeInvoiceNo = null; // New variable to store the generated invoice number
   let lastSale = [];
   let salesProductList = null;
+  let currentSalesPage = 1; // Global variable for Sales tab pagination
+  const itemsPerSalesPage = 50; // Global variable for Sales tab pagination
+  let currentTab = "Sales"; // Initialize currentTab globally
+
+// Function to apply filters for sales products (moved to global scope)
+async function applySalesFilters() {
+  let filtered = [...allProducts];
+  const salesSearchInput = document.getElementById("salesSearchInput");
+  const salesFilterCategory = document.getElementById("salesFilterCategory");
+  const salesFilterSubCategory = document.getElementById("salesFilterSubCategory");
+
+  const selectedCategory = salesFilterCategory?.value;
+  const selectedSubCategory = salesFilterSubCategory?.value;
+  const salesSearch = salesSearchInput?.value.toLowerCase();
+
+  if (selectedCategory) {
+    filtered = filtered.filter(p => p.category === selectedCategory);
+  }
+  if (selectedSubCategory) {
+    filtered = filtered.filter(p => p.sub_category === selectedSubCategory);
+  }
+  if (salesSearch) {
+    filtered = filtered.filter(p =>
+      p.name.toLowerCase().includes(salesSearch) ||
+      (p.brand && p.brand.toLowerCase().includes(salesSearch)) ||
+      (p.model_name && p.model_name.toLowerCase().includes(salesSearch))
+    );
+  }
+
+  renderSalesProducts(filtered, currentSalesPage, itemsPerSalesPage);
+}
+
+function renderSalesPaginationControls(totalPages) {
+  const paginationContainer = document.getElementById('salesPaginationControls');
+  if (!paginationContainer) {
+    console.error("Sales pagination container not found.");
+    return;
+  }
+
+  paginationContainer.innerHTML = `
+    <button id="prevSalesPageBtn" class="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300 ${currentSalesPage === 1 ? 'opacity-50 cursor-not-allowed' : ''}" ${currentSalesPage === 1 ? 'disabled' : ''}>Previous</button>
+    <span class="text-sm">Page ${currentSalesPage} of ${totalPages}</span>
+    <button id="nextSalesPageBtn" class="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300 ${currentSalesPage === totalPages ? 'opacity-50 cursor-not-allowed' : ''}" ${currentSalesPage === totalPages ? 'disabled' : ''}>Next</button>
+  `;
+
+  document.getElementById('prevSalesPageBtn').onclick = () => {
+    if (currentSalesPage > 1) {
+      currentSalesPage--;
+      applySalesFilters();
+    }
+  };
+
+  document.getElementById('nextSalesPageBtn').onclick = () => {
+    if (currentSalesPage < totalPages) {
+      currentSalesPage++;
+      applySalesFilters();
+    }
+  };
+}
 
   // ✅ Fix Scroll Bleed: Dynamically adjust padding based on cart height
   const mainContent = document.getElementById('main-scrollable-content');
@@ -214,13 +279,11 @@ document.addEventListener("DOMContentLoaded", async () => {
         <div id="printLabelModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
           <div class="bg-white p-6 rounded shadow-lg w-full max-w-md mx-auto">
             <h2 class="text-lg font-semibold mb-4">Print Label</h2>
-            <div id="label-preview" class="mb-4 border p-4">
-              <div id="label-store-name" class="text-center font-bold text-lg"></div>
-              <div id="label-product-name" class="text-center"></div>
+            <div id="label-preview" class="mb-4 border p-4 text-xs">
+              <div id="label-store-name" class="text-center font-extrabold text-lg"></div>
+              <div id="label-product-name" class="text-center text-sm font-medium"></div>
               <canvas id="label-barcode" class="max-w-full h-auto mx-auto"></canvas>
-              <div id="label-barcode-value" class="text-center text-sm font-mono break-all cursor-pointer" title="Copy to clipboard"></div>
-              <div id="label-mrp" class="text-center font-bold"></div>
-              <div id="label-stock" class="text-center text-xs"></div>
+              <div id="label-mrp" class="text-center text-base font-bold mt-1"></div>
             </div>
             <div class="flex items-center justify-between mb-4">
               <label for="label-size">Label Size:</label>
@@ -919,6 +982,7 @@ async function updateProductModalSubCategoryDropdown(category) {
 
 
 async function renderView(viewName) {
+  currentTab = viewName; // Update currentTab on view change
   app.innerHTML = views[viewName] || `<p>Unknown view: ${viewName}</p>`;
 
   document.querySelectorAll(".nav-btn").forEach((btn) => {
@@ -954,9 +1018,6 @@ async function renderView(viewName) {
   }
 
   if (viewName === "Sales") {
-    currentSalesPage = 1; // Reset to first page on tab switch
-    const itemsPerSalesPage = 50; // Number of products to display per page
-
     const cart = document.getElementById("fixed-cart-ui");
     if (cart) cart.classList.remove("hidden");
 
@@ -1028,33 +1089,7 @@ async function renderView(viewName) {
       renderSalesProducts(filtered, currentSalesPage, itemsPerSalesPage);
     }
 
-    function renderSalesPaginationControls(totalPages, currentPage) {
-      const paginationContainer = document.getElementById('salesPaginationControls');
-      if (!paginationContainer) {
-        console.error("Sales pagination container not found.");
-        return;
-      }
 
-      paginationContainer.innerHTML = `
-        <button id="prevSalesPageBtn" class="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300 ${currentPage === 1 ? 'opacity-50 cursor-not-allowed' : ''}" ${currentPage === 1 ? 'disabled' : ''}>Previous</button>
-        <span class="text-sm">Page ${currentPage} of ${totalPages}</span>
-        <button id="nextSalesPageBtn" class="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300 ${currentPage === totalPages ? 'opacity-50 cursor-not-allowed' : ''}" ${currentPage === totalPages ? 'disabled' : ''}>Next</button>
-      `;
-
-      document.getElementById('prevSalesPageBtn').onclick = () => {
-        if (currentPage > 1) {
-          currentSalesPage--;
-          applySalesFilters();
-        }
-      };
-
-      document.getElementById('nextSalesPageBtn').onclick = () => {
-        if (currentPage < totalPages) {
-          currentSalesPage++;
-          applySalesFilters();
-        }
-      };
-    }
 
     await renderSalesProducts(allProducts, currentSalesPage, itemsPerSalesPage); // Initial render of all products
 
@@ -1272,33 +1307,7 @@ if (viewName === "Settings") {
   }
   
 
-  function renderSalesPaginationControls(totalPages, currentPage) {
-      const paginationContainer = document.getElementById('salesPaginationControls');
-      if (!paginationContainer) {
-        console.error("Sales pagination container not found.");
-        return;
-      }
-
-      paginationContainer.innerHTML = `
-        <button id="prevSalesPageBtn" class="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300 ${currentPage === 1 ? 'opacity-50 cursor-not-allowed' : ''}" ${currentPage === 1 ? 'disabled' : ''}>Previous</button>
-        <span class="text-sm">Page ${currentPage} of ${totalPages}</span>
-        <button id="nextSalesPageBtn" class="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300 ${currentPage === totalPages ? 'opacity-50 cursor-not-allowed' : ''}" ${currentPage === totalPages ? 'disabled' : ''}>Next</button>
-      `;
-
-      document.getElementById('prevSalesPageBtn').onclick = () => {
-        if (currentPage > 1) {
-          currentSalesPage--;
-          applySalesFilters();
-        }
-      };
-
-      document.getElementById('nextSalesPageBtn').onclick = () => {
-        if (currentPage < totalPages) {
-          currentSalesPage++;
-          applySalesFilters();
-        }
-      };
-    }
+      
 
   async function renderSalesProducts(productsToRender = allProducts, page = 1, perPage = 50) {
     console.log("renderSalesProducts: productsToRender received:", productsToRender);
@@ -1496,7 +1505,10 @@ async function renderCartOverlay() {
   if (confirmBtn) {
 	  confirmBtn.disabled = false; // 👈 this is what’s missing!
     confirmBtn.onclick = async () => {
-        invoiceNo = invoiceNo || document.getElementById("customerInvoiceNo")?.value?.trim() || "N/A"; // Get the value from the input
+        const invoiceNo = document.getElementById("customerInvoiceNo")?.value?.trim() || "N/A";
+        const custName = document.getElementById("custName")?.value?.trim() || "—";
+        const custPhone = document.getElementById("custPhone")?.value?.trim() || "—";
+
       const name = document.getElementById("custName")?.value?.trim() || null;
       const phone = document.getElementById("custPhone")?.value?.trim() || null;
       const gstin = document.getElementById("custGSTIN")?.value?.trim() || null;
@@ -1959,88 +1971,81 @@ document.querySelectorAll(".nav-btn").forEach((btn) => {
   await renderView("Dashboard"); // Initial load
 
   window.showPrintLabelModal = async function(productId) {
-    console.log("Opening label preview for product ID:", productId);
-    const product = await window.api.getProductById(productId);
-    if (!product) {
-      showToast("❌ Product not found.");
+  console.log("Opening label preview for product ID:", productId);
+  const product = await window.api.getProductById(productId);
+  if (!product) {
+    showToast("❌ Product not found.");
+    return;
+  }
+
+  const storeSettings = await window.api.getStoreSettings();
+
+  document.getElementById("label-store-name").textContent = storeSettings.store_name || "";
+  document.getElementById("label-product-name").textContent = product.name;
+  document.getElementById("label-mrp").textContent = `MRP: ₹${product.price} (Incl. all taxes)`;
+  document.getElementById("label-quantity").value = 1;
+
+  const canvas = document.getElementById("label-barcode");
+  const ctx = canvas.getContext("2d");
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  if (typeof bwipjs === 'undefined') {
+    console.warn("bwipjs not available, skipping barcode render");
+    canvas.parentElement.innerHTML += `<p class="text-red-500">Barcode library not loaded.</p>`;
+  } else if (product.barcode_value) {
+    try {
+      bwipjs.toCanvas(canvas, {
+        bcid: "code128",
+        text: product.barcode_value,
+        scale: 2, // reduced size for modal
+        height: 8,
+        includetext: true,
+        textxalign: "center",
+      });
+    } catch (e) {
+      console.error("Failed to generate barcode:", e);
+      canvas.parentElement.innerHTML += `<p class="text-red-500">Invalid barcode value.</p>`;
+    }
+  } else {
+    console.warn("Skipping canvas render due to missing barcode");
+    canvas.parentElement.innerHTML += `<p class="text-red-500">No barcode assigned.</p>`;
+  }
+
+  const cart = document.getElementById("fixed-cart-ui");
+  if (cart) cart.classList.add("hidden");
+
+  document.getElementById("printLabelModal").classList.remove("hidden");
+
+  document.getElementById("printLabelBtn").onclick = () => {
+    const labelSize = document.getElementById("label-size").value;
+    const [width, height] = labelSize.split("x");
+    const quantity = parseInt(document.getElementById("label-quantity").value, 10);
+
+    if (isNaN(quantity) || quantity <= 0) {
+      showToast("❌ Please enter a valid quantity.");
       return;
     }
 
-    const storeSettings = await window.api.getStoreSettings();
+    const labelPreview = document.getElementById("label-preview");
+    const printContent = Array.from({ length: quantity })
+      .map(() => labelPreview.innerHTML)
+      .join("");
 
-    document.getElementById("label-store-name").textContent = storeSettings.store_name || "";
-    document.getElementById("label-product-name").textContent = product.name;
-    document.getElementById("label-barcode-value").textContent = product.barcode_value;
-    document.getElementById("label-barcode-value").addEventListener("click", () => {
-      navigator.clipboard.writeText(product.barcode_value);
-      showToast("✅ Copied to clipboard");
+    window.api.printLabel({
+      html: printContent,
+      width: width * 1000, // convert to microns
+      height: height * 1000, // convert to microns
     });
-    document.getElementById("label-mrp").textContent = `MRP: ₹${product.price}`;
-    document.getElementById("label-stock").textContent = `Stock: ${product.stock}`;
-    document.getElementById("label-stock-ref").textContent = `(In Stock: ${product.stock})`;
-    document.getElementById("label-quantity").value = 1;
-
-    const canvas = document.getElementById("label-barcode");
-    const ctx = canvas.getContext("2d");
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    if (typeof bwipjs === 'undefined') {
-      console.warn("bwipjs not available, skipping barcode render");
-      canvas.parentElement.innerHTML += `<p class="text-red-500">Barcode library not loaded.</p>`;
-    } else if (product.barcode_value) {
-      try {
-        bwipjs.toCanvas(canvas, {
-          bcid: "code128",
-          text: product.barcode_value,
-          scale: 2, // reduced size for modal
-          height: 8,
-          includetext: true,
-          textxalign: "center",
-        });
-      } catch (e) {
-        console.error("Failed to generate barcode:", e);
-        canvas.parentElement.innerHTML += `<p class="text-red-500">Invalid barcode value.</p>`;
-      }
-    } else {
-      console.warn("Skipping canvas render due to missing barcode");
-      canvas.parentElement.innerHTML += `<p class="text-red-500">No barcode assigned.</p>`;
-    }
-
-    const cart = document.getElementById("fixed-cart-ui");
-    if (cart) cart.classList.add("hidden");
-
-    document.getElementById("printLabelModal").classList.remove("hidden");
-
-    document.getElementById("printLabelBtn").onclick = () => {
-      const labelSize = document.getElementById("label-size").value;
-      const [width, height] = labelSize.split("x");
-      const quantity = parseInt(document.getElementById("label-quantity").value, 10);
-
-      if (isNaN(quantity) || quantity <= 0) {
-        showToast("❌ Please enter a valid quantity.");
-        return;
-      }
-
-      const labelPreview = document.getElementById("label-preview");
-      const printContent = Array.from({ length: quantity })
-        .map(() => labelPreview.innerHTML)
-        .join("");
-
-      window.api.printLabel({ 
-        html: printContent, 
-        width: width * 1000, // convert to microns
-        height: height * 1000, // convert to microns
-      });
-    };
-
-    document.getElementById("cancelPrintLabelBtn").onclick = () => {
-      document.getElementById("printLabelModal").classList.add("hidden");
-      const cart = document.getElementById("fixed-cart-ui");
-      if (cart && currentTab === "Sales") {
-        cart.classList.remove("hidden");
-      }
-    };
   };
+
+  document.getElementById("cancelPrintLabelBtn").onclick = () => {
+    document.getElementById("printLabelModal").classList.add("hidden");
+    const cart = document.getElementById("fixed-cart-ui");
+    if (cart && currentTab === "Sales") {
+      cart.classList.remove("hidden");
+    }
+  };
+};
 });
 
 // 🧾 Invoice print layout support
@@ -2065,24 +2070,6 @@ async function renderInvoice(items, invoiceNo) {
   document.body.classList.add(`print-${printMode}`);
 
   const canvas = document.getElementById("invoice-barcode");
-  if (typeof bwipjs !== 'undefined') {
-    try {
-      bwipjs.toCanvas(canvas, {
-        bcid: "code128",
-        text: invoiceNo,
-        scale: 2,
-        height: 5,
-        includetext: true,
-        textxalign: "center",
-      });
-      canvas.addEventListener("click", () => {
-        navigator.clipboard.writeText(invoiceNo);
-        showToast("✅ Copied to clipboard");
-      });
-    } catch (e) {
-      console.error("Failed to generate invoice barcode:", e);
-    }
-  }
 
   invoiceItemsDiv.innerHTML = "";
   const invoiceHeader = document.getElementById("invoice-header");
@@ -2121,8 +2108,9 @@ let tableHTML = `
       <tr class="border-b border-dotted border-gray-400 text-left">
         <th class="p-1">S.No</th>
         <th class="p-1">Item</th>
-        ${showTaxable ? `<th class="p-1 text-right">GST%</th>` : ""}
         <th class="p-1 text-right">Rate</th>
+        <th class="p-1 text-right">GST%</th>
+        <th class="p-1 text-right">GST Amt</th>
         <th class="p-1 text-right">Qty</th>
         <th class="p-1 text-right">Disc.</th>
         <th class="p-1 text-right">Amount</th>
@@ -2155,90 +2143,44 @@ items.forEach((item, index) => {
   hsnSummary[hsn].gst += gstAmount;
 
   tableHTML += `
-    <tr class="border-b border-dotted border-gray-300">
-      <td class="p-1">${index + 1}</td>
-      <td class="p-1">${item.name}</td>
-      ${showTaxable ? `<td class="p-1 text-right">${gstRate}%</td>` : ""}
-      <td class="p-1 text-right">₹${price.toFixed(2)}</td>
-      <td class="p-1 text-right">${qty}</td>
-      <td class="p-1 text-right">₹${discount.toFixed(2)}</td>
-      <td class="p-1 text-right">₹${finalAmount.toFixed(2)}</td>
-    </tr>
+      <tr class="border-b border-dotted border-gray-300">
+        <td class="p-1">${index + 1}</td>
+        <td class="p-1">${item.name}</td>
+        <td class="p-1 text-right">₹${price.toFixed(2)}</td>
+        <td class="p-1 text-right">${gstRate}%</td>
+        <td class="p-1 text-right">₹${gstAmount.toFixed(2)}</td>
+        <td class="p-1 text-right">${qty}</td>
+        <td class="p-1 text-right">₹${discount.toFixed(2)}</td>
+        <td class="p-1 text-right">₹${finalAmount.toFixed(2)}</td>
+      </tr>
+    `;
+  });
+
+  tableHTML += `
+      </tbody>
+    </table>
   `;
-});
 
-tableHTML += `</tbody></table>`;
-invoiceItemsDiv.innerHTML = tableHTML;
-  const grandTotal = subtotal + totalGST;
-// ➕ New slab-wise GST breakdown (matches updateCartSummaryFooter logic)
-const gstBreakdown = {};
-items.forEach(item => {
-  const rate = item.price || 0;
-  const qty = item.quantity || 1;
-  const gst = parseFloat(item.gst_percent ?? 0);
+  invoiceItemsDiv.innerHTML = tableHTML;
 
-  if (!gst || gst === 0) return;
+  const totalAmount = subtotal + totalGST;
+  const cgstTotal = +(totalGST / 2).toFixed(2);
+  const sgstTotal = +(totalGST / 2).toFixed(2);
 
-  const gross = rate * qty;
-  const gstFraction = gst / (100 + gst);
-  const rawGST = gross * gstFraction;
-  const rawCGST = rawGST / 2;
-  const rawSGST = rawGST / 2;
+  const grossTotal = items.reduce((sum, item) => sum + (item.price || 0) * (item.quantity || 1), 0);
+  const totalDiscount = grossTotal - (subtotal + totalGST);
 
-  if (!gstBreakdown[gst]) {
-    gstBreakdown[gst] = { cgst: 0, sgst: 0, total: 0 };
-  }
-
-  gstBreakdown[gst].cgst += rawCGST;
-  gstBreakdown[gst].sgst += rawSGST;
-  gstBreakdown[gst].total += rawGST;
-});
-
-const gstLines = Object.entries(gstBreakdown)
-  .sort((a, b) => parseFloat(a[0]) - parseFloat(b[0])) // low to high
-  .map(([rate, data]) => `
-    <div>CGST (${rate / 2}%): ₹${data.cgst.toFixed(2)}</div>
-    <div>SGST (${rate / 2}%): ₹${data.sgst.toFixed(2)}</div>
-    <div>Total GST (${rate}%): ₹${data.total.toFixed(2)}</div>
-  `).join("");
-
-// ➕ Total pre-discount
-const grossTotal = items.reduce((sum, item) => sum + (item.price || 0) * (item.quantity || 1), 0);
-const totalDiscount = grossTotal - (subtotal + totalGST);
-
-invoiceTotalP.innerHTML = `
-  <div class="text-sm mt-3 border-t pt-2 text-right">
-    <div>Total Amount: ₹${grossTotal.toFixed(2)}</div>
-    ${gstLines}
-    <div class="text-red-600">Discount: − ₹${totalDiscount.toFixed(2)}</div>
-    <div class="text-lg font-bold mt-1">Payable: ₹${(subtotal + totalGST).toFixed(2)}</div>
-  </div>
-`;
-
-const now = new Date();
-const date = now.toLocaleString("en-IN", {
-  dateStyle: "short",
-  timeStyle: "short"
-});
-
-invoiceNo = invoiceNo || document.getElementById("customerInvoiceNo")?.value?.trim() || "N/A";
-const custName = document.getElementById("custName")?.value?.trim() || "—";
-const custPhone = document.getElementById("custPhone")?.value?.trim() || "—";
-
-invoiceMeta.innerHTML = `
-  <div class="text-xs flex justify-between">
-    <div class="text-left">
-      Customer: ${custName}<br>
-      Phone: ${custPhone}
+  invoiceTotalP.innerHTML = `
+    <div class="text-sm mt-3 border-t pt-2 text-right">
+      <div>Total GST: ₹${totalGST.toFixed(2)}</div>
+      <div>CGST + SGST: ₹${cgstTotal.toFixed(2)} + ₹${sgstTotal.toFixed(2)}</div>
+      <div>Total Amount: ₹${(subtotal + totalGST).toFixed(2)}</div>
+      <div class="text-red-600">Discount: − ₹${totalDiscount.toFixed(2)}</div>
+      <div class="text-lg font-bold mt-1">Payable: ₹${(subtotal + totalGST).toFixed(2)}</div>
+    <div class="text-center mt-4 font-medium"> Thank you! Visit again.</div>
     </div>
-    <div class="text-right text-nowrap">
-      Invoice No: ${invoiceNo}<br>
-      ${date}
-    </div>
-  </div>
-  <div class="border-t my-1"></div>
-`;
-}
+  `;
+  } // ✅ Closing renderInvoice()
 function applyGlobalDiscount(type, value) {
   if (!cart.length) return;
 
