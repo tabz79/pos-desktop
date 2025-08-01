@@ -176,6 +176,17 @@ function renderSalesPaginationControls(totalPages) {
         </div>
 
         <!-- Chart and Top Products -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+          <div class="bg-white p-4 rounded-lg shadow card-transition">
+            <h3 class="text-lg font-semibold mb-2">Daily Sales</h3>
+            <canvas id="daily-sales-chart"></canvas>
+          </div>
+          <div class="bg-white p-4 rounded-lg shadow card-transition">
+            <h3 class="text-lg font-semibold mb-2">Weekly Sales</h3>
+            <canvas id="weekly-sales-chart"></canvas>
+          </div>
+        </div>
+
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
           <div class="lg:col-span-2 bg-white p-4 rounded-lg shadow card-transition">
             <h3 class="text-lg font-semibold mb-2">Monthly Sales</h3>
@@ -423,7 +434,58 @@ function renderSalesPaginationControls(totalPages) {
     `
   };
 
+function renderDailySalesChart() {
+  const dailySalesCtx = document.getElementById('daily-sales-chart').getContext('2d');
+  new Chart(dailySalesCtx, {
+    type: 'line',
+    data: {
+      labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+      datasets: [{
+        label: 'Daily Sales',
+        data: [1200, 1500, 1000, 1800, 1600, 2000, 1700],
+        backgroundColor: 'rgba(255, 99, 132, 0.6)',
+        borderColor: 'rgba(255, 99, 132, 1)',
+        borderWidth: 1
+      }]
+    },
+    options: {
+      scales: {
+        y: {
+          beginAtZero: true
+        }
+      }
+    }
+  });
+}
+
+function renderWeeklySalesChart() {
+  const weeklySalesCtx = document.getElementById('weekly-sales-chart').getContext('2d');
+  new Chart(weeklySalesCtx, {
+    type: 'bar',
+    data: {
+      labels: ['Week 1', 'Week 2', 'Week 3', 'Week 4'],
+      datasets: [{
+        label: 'Weekly Sales',
+        data: [5000, 5500, 6200, 5800],
+        backgroundColor: 'rgba(153, 102, 255, 0.6)',
+        borderColor: 'rgba(153, 102, 255, 1)',
+        borderWidth: 1
+      }]
+    },
+    options: {
+      scales: {
+        y: {
+          beginAtZero: true
+        }
+      }
+    }
+  });
+}
+
 async function setupDashboardView() {
+  renderDailySalesChart();
+  renderWeeklySalesChart();
+
   const stats = await window.api.getDashboardStats();
   if (stats) {
     document.getElementById('today-sales').textContent = `₹${stats.today_sales.toFixed(2)}`;
