@@ -154,8 +154,10 @@ function renderSalesPaginationControls(totalPages) {
 
   const views = {
     Dashboard: `
-      <div>
-        <h2 class="text-2xl font-bold mb-6">Dashboard</h2>
+      <div class="h-[56px] flex items-center px-6">
+        <h2 class="text-3xl font-bold leading-tight text-gray-800">Dashboard</h2>
+      </div>
+      <div class="p-6 pt-4">
         
         <!-- Sales Stats -->
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
@@ -207,9 +209,11 @@ function renderSalesPaginationControls(totalPages) {
       </div>
     `,
     Products: `
-      <div>
+      <div class="h-[56px] flex items-end px-6">
+        <h2 class="text-2xl font-bold text-gray-800">Product List</h2>
+      </div>
+      <div class="p-6 pt-0">
         <div class="flex justify-between items-center mb-4">
-          <h2 class="text-xl font-bold">Product List</h2>
           <div class="flex gap-2">
             <input type="text" id="searchInput" placeholder="Search by name..." class="border border-secondary-light rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary" />
             <select id="filterCategory" class="border border-secondary-light rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary">
@@ -306,9 +310,11 @@ function renderSalesPaginationControls(totalPages) {
       </div>
     `,
     Sales: `
-      <div>
+      <div class="h-[56px] flex items-end px-6">
+        <h2 class="text-2xl font-bold text-gray-800">Sales</h2>
+      </div>
+      <div class="p-6 pt-0">
         <div class="flex justify-between items-center mb-4">
-          <h2 class="text-xl font-bold">Sales</h2>
           <div class="flex gap-2">
             <input type="text" id="salesSearchInput" placeholder="Search by name..." class="border border-secondary-light rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary" />
             <select id="salesFilterCategory" class="border border-secondary-light rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary">
@@ -324,8 +330,11 @@ function renderSalesPaginationControls(totalPages) {
       </div>
     `,
     InvoiceHistory: `
-      <div>
-        <h2 class="text-2xl font-bold mb-6">Invoice History</h2>
+      <div class="h-[56px] flex items-end px-6">
+        <h2 class="text-2xl font-bold text-gray-800">Invoice History</h2>
+      </div>
+      <div class="p-6 pt-0">
+        <div class="bg-white p-4 rounded-lg shadow mb-6">
         <div class="bg-white p-4 rounded-lg shadow mb-6">
           <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div>
@@ -361,8 +370,11 @@ function renderSalesPaginationControls(totalPages) {
       </div>
     `,
     Settings: `
-      <div class="p-4 bg-white rounded shadow w-full">
-        <h2 class="text-xl font-bold mb-4">Business Profile</h2>
+      <div class="h-[56px] flex items-end px-6">
+        <h2 class="text-2xl font-bold text-gray-800">Business Profile</h2>
+      </div>
+      <div class="p-6 pt-0">
+        <div class="p-4 bg-white rounded shadow w-full">
         <form id="store-profile-form" class="space-y-4">
           <div>
             <label class="block text-sm font-medium">Store Name</label>

@@ -2,3 +2,6 @@ node_modules/
 pos.db
 styles/output.css
 .DS_Store
+.env
+inv-80mm.jpg
+SFT103.png
