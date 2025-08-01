@@ -11,7 +11,8 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "better-sqlite3": "^11.10.0"
+    "better-sqlite3": "^11.10.0",
+    "bwip-js": "^4.7.0"
   },
   "devDependencies": {
     "autoprefixer": "^10.4.21",

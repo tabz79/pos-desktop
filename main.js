@@ -68,10 +68,68 @@ function createWindow() {
   console.log("✅ Window loaded.");
 }
 
+let barcodeCounter = 0;
+
+function generateBarcode(product) {
+  try {
+    const category = (product.category || 'UNK').substring(0, 3).toUpperCase().padEnd(3, 'X');
+    const name = (product.name || 'NA').substring(0, 2).toUpperCase().padEnd(2, 'X');
+    const subCategory = (product.sub_category || '_').substring(0, 1).toUpperCase();
+    const brand = (product.brand || 'XX').substring(0, 2).toUpperCase().padEnd(2, 'X');
+    const model = (product.model_name ? product.model_name.split('-')[0] : 'ZZ').substring(0, 2).toUpperCase().padEnd(2, 'Z');
+
+    const counter = (++barcodeCounter).toString().padStart(5, '0');
+
+    return `${category}${name}${subCategory}${brand}${counter}${model}`;
+  } catch (error) {
+    console.error("Failed to generate barcode for", product.name, error);
+    return "ERROR";
+  }
+}
+
+async function regenerateAllBarcodes() {
+  if (!dbAPI) return;
+  try {
+    console.log('🔄 Clearing all existing barcode values...');
+    dbAPI.db.prepare('UPDATE products SET barcode_value = NULL').run();
+
+    const products = dbAPI.getAllProducts();
+    console.log(`Found ${products.length} products to process.`);
+    const maxBarcode = dbAPI.db.prepare("SELECT MAX(barcode_value) as max FROM products").get();
+    if (maxBarcode && maxBarcode.max) {
+      const match = maxBarcode.max.match(/(\d{5})/);
+      if (match) {
+        barcodeCounter = parseInt(match[1], 10);
+      }
+    }
+    console.log(`Starting barcode counter at ${barcodeCounter}`);
+
+    console.log('🔄 Regenerating all product barcodes...');
+    const updateStmt = dbAPI.db.prepare('UPDATE products SET barcode_value = ? WHERE id = ?');
+
+    for (let i = 0; i < products.length; i++) {
+      const product = products[i];
+      const newBarcode = generateBarcode(product);
+      updateStmt.run(newBarcode, product.id);
+      if (i < 5) {
+        console.log(`Generated barcode for ${product.name}: ${newBarcode}`);
+      }
+    }
+    console.log('✅ Barcode regeneration complete.');
+  } catch (error) {
+    console.error('❌ Failed to regenerate barcodes:', error);
+  }
+}
+
 app.disableHardwareAcceleration();
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   console.log("🚀 App is ready.");
+  if (process.env.NODE_ENV !== 'production') {
+    // await regenerateAllBarcodes(); // Uncomment for development if needed
+  } else {
+    console.warn('Production mode: Automatic barcode regeneration on boot is disabled.');
+  }
   createWindow();
 
   // ✅ IPC Handlers
@@ -123,7 +181,7 @@ app.whenReady().then(() => {
     });
 
     ipcMain.handle("import-products-csv", (event, rows) => {
-      return dbAPI.importProductsFromCSV(rows);
+      return dbAPI.importProductsFromCSV(rows, generateBarcode);
     });
 
     // ✅ GST-aware sale handler
@@ -286,6 +344,36 @@ app.whenReady().then(() => {
     // ✅ Generate and increment next invoice number
     ipcMain.handle('get-next-invoice-no', async () => {
       return await getNextInvoiceNumber();
+    });
+
+    ipcMain.handle('print-label', (event, { html, width, height }) => {
+      const printWindow = new BrowserWindow({ show: false });
+
+      printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+
+      printWindow.webContents.on('did-finish-load', () => {
+        printWindow.webContents.print({
+          silent: true,
+          printBackground: true,
+          pageSize: {
+            width: width, // in microns
+            height: height, // in microns
+          },
+          margins: { marginType: 'none' },
+        }, (success, errorType) => {
+          if (!success) console.log(errorType);
+          printWindow.close();
+        });
+      });
+    });
+
+    ipcMain.handle('regenerate-barcodes', async () => {
+      await regenerateAllBarcodes();
+      return { success: true };
+    });
+
+    ipcMain.handle('get-product-by-id', async (event, id) => {
+      return dbAPI.getProductById(id);
     });
 
     // --- DATA DUMP & RESTORE ---

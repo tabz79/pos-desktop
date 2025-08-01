@@ -9,39 +9,6 @@
  * @param {string} [params.model_name=''] - Model name
  * @returns {{product_id: string, barcode_value: string}}
  */
-function generateProductDetails({ category = '', name = '', brand = '', model_name = '' }) {
-  // 1. Category part: First 3 letters, padded with 'X' if less than 3.
-  const categoryPart = (category || '').substring(0, 3).padEnd(3, 'X').toUpperCase();
-
-  // 2. Name part: First letter of up to 6 words, padded to 6 with '0'.
-  const namePart = (name || '').trim().split(/\s+/).filter(Boolean).slice(0, 6).map(word => word.charAt(0)).join('').padEnd(6, '0').toUpperCase();
-
-  // 3. Brand part: Initials of first 2 words, or first 2 letters of a single word.
-  const brandWords = (brand || '').trim().split(/\s+/).filter(Boolean);
-  let brandPart = '';
-  if (brandWords.length > 1) {
-    brandPart = brandWords.slice(0, 2).map(word => word.charAt(0)).join('');
-  } else if (brandWords.length === 1) {
-    brandPart = brandWords[0].substring(0, 2);
-  }
-  brandPart = brandPart.padEnd(2, '0').toUpperCase();
-
-  // 4. Model part: Prefix before the first '-'.
-  const modelPart = ((model_name || '').trim().split('-')[0] || '').toUpperCase();
-
-  const finalId = `${categoryPart}${namePart}${brandPart}${modelPart}`;
-
-  return {
-    product_id: finalId,
-    barcode_value: finalId,
-  };
-}
-
-/**
- * Parses the price from a model name suffix (e.g., "a1-2k" -> 2000).
- * @param {string} model_name - The model name string.
- * @returns {number | null} The parsed price or null if invalid.
- */
 function parsePriceFromModel(model_name = '') {
   try {
     const suffix = (model_name || '').split('-')[1];
@@ -61,6 +28,25 @@ function parsePriceFromModel(model_name = '') {
     return null;
   } catch (error) {
     return null;
+  }
+}
+
+let barcodeCounter = 0;
+
+function generateBarcode(product) {
+  try {
+    const category = (product.category || 'UNK').substring(0, 3).toUpperCase().padEnd(3, 'X');
+    const name = (product.name || 'NA').substring(0, 2).toUpperCase().padEnd(2, 'X');
+    const subCategory = (product.sub_category || '_').substring(0, 1).toUpperCase();
+    const brand = (product.brand || 'XX').substring(0, 2).toUpperCase().padEnd(2, 'X');
+    const model = (product.model_name ? product.model_name.split('-')[0] : 'ZZ').substring(0, 2).toUpperCase().padEnd(2, 'Z');
+
+    const counter = (++barcodeCounter).toString().padStart(5, '0');
+
+    return `${category}${name}${subCategory}${brand}${counter}${model}`;
+  } catch (error) {
+    console.error("Failed to generate barcode for", product.name, error);
+    return "ERROR";
   }
 }
 
@@ -224,6 +210,36 @@ document.addEventListener("DOMContentLoaded", async () => {
             </div>
           </div>
         </div>
+
+        <div id="printLabelModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
+          <div class="bg-white p-6 rounded shadow-lg w-full max-w-md mx-auto">
+            <h2 class="text-lg font-semibold mb-4">Print Label</h2>
+            <div id="label-preview" class="mb-4 border p-4">
+              <div id="label-store-name" class="text-center font-bold text-lg"></div>
+              <div id="label-product-name" class="text-center"></div>
+              <canvas id="label-barcode" class="max-w-full h-auto mx-auto"></canvas>
+              <div id="label-barcode-value" class="text-center text-sm font-mono break-all cursor-pointer" title="Copy to clipboard"></div>
+              <div id="label-mrp" class="text-center font-bold"></div>
+              <div id="label-stock" class="text-center text-xs"></div>
+            </div>
+            <div class="flex items-center justify-between mb-4">
+              <label for="label-size">Label Size:</label>
+              <select id="label-size" class="border rounded px-2 py-1">
+                <option value="50x38">50x38 mm</option>
+                <option value="50x30">50x30 mm</option>
+              </select>
+            </div>
+            <div class="flex items-center justify-between mb-4">
+              <label for="label-quantity">Quantity:</label>
+              <input type="number" id="label-quantity" value="1" min="1" class="border rounded px-2 py-1 w-24">
+              <span id="label-stock-ref" class="text-sm text-gray-500"></span>
+            </div>
+            <div class="flex justify-end space-x-2">
+              <button id="cancelPrintLabelBtn" class="px-4 py-2 bg-secondary-light text-secondary-dark rounded">Cancel</button>
+              <button id="printLabelBtn" class="px-4 py-2 bg-primary text-white rounded">Print</button>
+            </div>
+          </div>
+        </div>
       </div>
     `,
     Sales: `
@@ -313,6 +329,21 @@ document.addEventListener("DOMContentLoaded", async () => {
             💾 Save Profile
           </button>
         </form>
+        <div class="mt-6">
+          <h3 class="text-lg font-semibold mb-2">Advanced</h3>
+          <button id="regenerateBarcodesBtn" class="bg-danger hover:bg-red-700 text-white px-4 py-2 rounded transition-colors duration-200">
+            🔄 Regenerate All Barcodes
+          </button>
+          <p class="text-sm text-gray-600 mt-2">This will regenerate barcodes for all products. Use this if you encounter issues with missing or incorrect barcodes.</p>
+        </div>
+        <div class="mt-6">
+          <h3 class="text-lg font-semibold mb-2">Test Barcode</h3>
+          <div class="flex items-center space-x-2">
+            <input type="number" id="testProductId" placeholder="Product ID" class="border rounded px-2 py-1 w-24">
+            <button id="testBarcodeBtn" class="bg-primary hover:bg-primary-dark text-white px-4 py-2 rounded transition-colors duration-200">
+              Test
+            </button>
+          </div>
       </div>
     `
   };
@@ -465,7 +496,7 @@ async function setupInvoiceHistoryView() {
 window.viewInvoice = async function(id) {
   const invoice = await window.api.getInvoiceDetails(id);
   if (invoice) {
-    showInvoice(invoice.items);
+    showInvoice(invoice.items, invoice.invoice_no);
   }
 }
 
@@ -551,8 +582,9 @@ function setupProductView() {
         <td class="p-2">₹${p.price}</td>
         <td class="p-2">${p.stock}</td>
         <td class="p-2 space-x-2">
-          <button class="text-blue-600" onclick="editProduct(${p.id}, '${p.name.replace(/'/g, "'")}', ${p.price}, ${p.stock}, '${p.hsn_code || ""}', '${p.category || ""}', ${p.gst_percent ?? 'null'})">✏️</button>
+          <button class="text-blue-600" onclick="editProduct(${p.id})">✏️</button>
           <button class="text-red-600" onclick="deleteProduct(${p.id})">🗑️</button>
+          <button class="text-green-600" onclick="showPrintLabelModal(${p.id})">️ Print Label</button>
         </td>
       </tr>
     `).join("");
@@ -650,31 +682,7 @@ function setupProductView() {
   const unitInput = document.getElementById("productUnit");
   const barcodeValueInput = document.getElementById("productBarcodeValue");
 
-  // --- Auto-generation logic ---
-  function updateGeneratedFields() {
-    // 1. Generate Product ID and Barcode
-    const details = generateProductDetails({
-      category: categorySelect.value,
-      name: nameInput.value,
-      brand: brandInput.value,
-      model_name: modelNameInput.value,
-    });
-    productIdInput.value = details.product_id;
-    barcodeValueInput.value = details.barcode_value;
-
-    // 2. Parse Price from Model Name
-    const parsedPrice = parsePriceFromModel(modelNameInput.value);
-    if (parsedPrice !== null) {
-      priceInput.value = parsedPrice;
-    }
-  }
-
-  // Attach event listeners to trigger the auto-generation
-  nameInput.addEventListener('input', updateGeneratedFields);
-  brandInput.addEventListener('input', updateGeneratedFields);
-  modelNameInput.addEventListener('input', updateGeneratedFields);
-  categorySelect.addEventListener('change', updateGeneratedFields);
-  // --- End of auto-generation logic ---
+  
 
 
   if (categorySelect && hsnInput && gstInput) {
@@ -734,7 +742,7 @@ function setupProductView() {
     const brand = brandInput.value.trim();
     const model_name = modelNameInput.value.trim();
     const unit = unitInput.value.trim();
-    const barcode_value = barcodeValueInput.value.trim();
+    const barcode_value = generateBarcode(payload);
 
     if (!name || isNaN(price) || isNaN(stock)) {
       showToast("⚠️ Please fill all fields correctly.");
@@ -948,6 +956,9 @@ async function renderView(viewName) {
   if (viewName === "Sales") {
     currentSalesPage = 1; // Reset to first page on tab switch
     const itemsPerSalesPage = 50; // Number of products to display per page
+
+    const cart = document.getElementById("fixed-cart-ui");
+    if (cart) cart.classList.remove("hidden");
 
     if (!productsLoaded) {
         const salesProductList = document.getElementById('salesProductList');
@@ -1220,6 +1231,42 @@ if (viewName === "Settings") {
       });
     });
   }
+
+  const regenerateBarcodesBtn = document.getElementById('regenerateBarcodesBtn');
+  if(regenerateBarcodesBtn) {
+    regenerateBarcodesBtn.addEventListener('click', async () => {
+      const confirmed = confirm("Are you sure you want to regenerate all barcodes? This cannot be undone.");
+      if(confirmed) {
+        const result = await window.api.regenerateBarcodes();
+        if(result.success) {
+          showToast("✅ Barcodes regenerated successfully.");
+          productCache = null;
+          allProducts = await window.api.getProducts();
+          renderProducts();
+        } else {
+          showToast("❌ Barcode regeneration failed.");
+        }
+      }
+    });
+  }
+
+  const testBarcodeBtn = document.getElementById('testBarcodeBtn');
+  if(testBarcodeBtn) {
+    testBarcodeBtn.addEventListener('click', async () => {
+      const productId = parseInt(document.getElementById('testProductId').value, 10);
+      if(isNaN(productId)) {
+        showToast("❌ Please enter a valid product ID.");
+        return;
+      }
+      const product = await window.api.getProductById(productId);
+      if(product) {
+        console.log(`Product ${productId} barcode:`, product.barcode_value);
+        showToast(`Product ${productId} barcode: ${product.barcode_value}`);
+      } else {
+        showToast("❌ Product not found.");
+      }
+    });
+  }
 }
 
   }
@@ -1449,7 +1496,7 @@ async function renderCartOverlay() {
   if (confirmBtn) {
 	  confirmBtn.disabled = false; // 👈 this is what’s missing!
     confirmBtn.onclick = async () => {
-      const invoiceNo = document.getElementById("customerInvoiceNo")?.value?.trim(); // Get the value from the input
+        invoiceNo = invoiceNo || document.getElementById("customerInvoiceNo")?.value?.trim() || "N/A"; // Get the value from the input
       const name = document.getElementById("custName")?.value?.trim() || null;
       const phone = document.getElementById("custPhone")?.value?.trim() || null;
       const gstin = document.getElementById("custGSTIN")?.value?.trim() || null;
@@ -1510,7 +1557,7 @@ try {
     }
 
     const clonedCart = structuredClone(itemsWithAmount); // ✅ Clone after DOM is updated
-    showInvoice(clonedCart); // ✅ Now pulls correct invoice number
+    showInvoice(clonedCart, invoiceNo); // ✅ Now pulls correct invoice number
 
     showToast("✅ Sale saved!");
     cart.length = 0;
@@ -1543,7 +1590,7 @@ if (previewBtn) {
       showToast("🛒 Cart is empty.");
       return;
     }
-    showInvoice([...cart]);
+    showInvoice([...cart], activeInvoiceNo);
   };
 }
   // Attach Global Discount Button (after overlay renders)
@@ -1837,7 +1884,12 @@ window.updateCartItem = async function (id, field, value) {
   renderCartOverlay(); // ✅ Will update summary footer too
 };
 
-  window.editProduct = function (id, name, price, stock, hsn_code, category, gst_percent) {
+  window.editProduct = function (id) {
+    const product = allProducts.find(p => p.id === id);
+    if (!product) {
+      showToast("❌ Product not found.");
+      return;
+    }
     const modal = document.getElementById("productModal");
     const modalTitle = document.getElementById("modalTitle");
     const nameInput = document.getElementById("productName");
@@ -1905,14 +1957,98 @@ document.querySelectorAll(".nav-btn").forEach((btn) => {
 });
 
   await renderView("Dashboard"); // Initial load
+
+  window.showPrintLabelModal = async function(productId) {
+    console.log("Opening label preview for product ID:", productId);
+    const product = await window.api.getProductById(productId);
+    if (!product) {
+      showToast("❌ Product not found.");
+      return;
+    }
+
+    const storeSettings = await window.api.getStoreSettings();
+
+    document.getElementById("label-store-name").textContent = storeSettings.store_name || "";
+    document.getElementById("label-product-name").textContent = product.name;
+    document.getElementById("label-barcode-value").textContent = product.barcode_value;
+    document.getElementById("label-barcode-value").addEventListener("click", () => {
+      navigator.clipboard.writeText(product.barcode_value);
+      showToast("✅ Copied to clipboard");
+    });
+    document.getElementById("label-mrp").textContent = `MRP: ₹${product.price}`;
+    document.getElementById("label-stock").textContent = `Stock: ${product.stock}`;
+    document.getElementById("label-stock-ref").textContent = `(In Stock: ${product.stock})`;
+    document.getElementById("label-quantity").value = 1;
+
+    const canvas = document.getElementById("label-barcode");
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (typeof bwipjs === 'undefined') {
+      console.warn("bwipjs not available, skipping barcode render");
+      canvas.parentElement.innerHTML += `<p class="text-red-500">Barcode library not loaded.</p>`;
+    } else if (product.barcode_value) {
+      try {
+        bwipjs.toCanvas(canvas, {
+          bcid: "code128",
+          text: product.barcode_value,
+          scale: 2, // reduced size for modal
+          height: 8,
+          includetext: true,
+          textxalign: "center",
+        });
+      } catch (e) {
+        console.error("Failed to generate barcode:", e);
+        canvas.parentElement.innerHTML += `<p class="text-red-500">Invalid barcode value.</p>`;
+      }
+    } else {
+      console.warn("Skipping canvas render due to missing barcode");
+      canvas.parentElement.innerHTML += `<p class="text-red-500">No barcode assigned.</p>`;
+    }
+
+    const cart = document.getElementById("fixed-cart-ui");
+    if (cart) cart.classList.add("hidden");
+
+    document.getElementById("printLabelModal").classList.remove("hidden");
+
+    document.getElementById("printLabelBtn").onclick = () => {
+      const labelSize = document.getElementById("label-size").value;
+      const [width, height] = labelSize.split("x");
+      const quantity = parseInt(document.getElementById("label-quantity").value, 10);
+
+      if (isNaN(quantity) || quantity <= 0) {
+        showToast("❌ Please enter a valid quantity.");
+        return;
+      }
+
+      const labelPreview = document.getElementById("label-preview");
+      const printContent = Array.from({ length: quantity })
+        .map(() => labelPreview.innerHTML)
+        .join("");
+
+      window.api.printLabel({ 
+        html: printContent, 
+        width: width * 1000, // convert to microns
+        height: height * 1000, // convert to microns
+      });
+    };
+
+    document.getElementById("cancelPrintLabelBtn").onclick = () => {
+      document.getElementById("printLabelModal").classList.add("hidden");
+      const cart = document.getElementById("fixed-cart-ui");
+      if (cart && currentTab === "Sales") {
+        cart.classList.remove("hidden");
+      }
+    };
+  };
 });
 
 // 🧾 Invoice print layout support
 document.getElementById("close-invoice-btn").addEventListener("click", () => {
   document.getElementById("invoice-modal").classList.add("hidden");
 });
-function showInvoice(items) {
-  renderInvoice(items);
+function showInvoice(items, invoiceNo) {
+  renderInvoice(items, invoiceNo);
   const modal = document.getElementById("invoice-modal");
   if (modal) {
     modal.classList.remove("hidden");
@@ -1920,13 +2056,33 @@ function showInvoice(items) {
     console.warn("❗ Invoice modal not found in DOM.");
   }
 }
-async function renderInvoice(items) {
+async function renderInvoice(items, invoiceNo) {
   const invoiceItemsDiv = document.getElementById("invoice-items");
   const invoiceTotalP = document.getElementById("invoice-total");
   const invoiceMeta = document.getElementById("invoice-meta");
   const printMode = document.getElementById("print-mode")?.value || "thermal";
   document.body.classList.remove("print-thermal", "print-a4");
   document.body.classList.add(`print-${printMode}`);
+
+  const canvas = document.getElementById("invoice-barcode");
+  if (typeof bwipjs !== 'undefined') {
+    try {
+      bwipjs.toCanvas(canvas, {
+        bcid: "code128",
+        text: invoiceNo,
+        scale: 2,
+        height: 5,
+        includetext: true,
+        textxalign: "center",
+      });
+      canvas.addEventListener("click", () => {
+        navigator.clipboard.writeText(invoiceNo);
+        showToast("✅ Copied to clipboard");
+      });
+    } catch (e) {
+      console.error("Failed to generate invoice barcode:", e);
+    }
+  }
 
   invoiceItemsDiv.innerHTML = "";
   const invoiceHeader = document.getElementById("invoice-header");
@@ -2065,7 +2221,7 @@ const date = now.toLocaleString("en-IN", {
   timeStyle: "short"
 });
 
-const invoiceNo = document.getElementById("customerInvoiceNo")?.value?.trim() || "N/A";
+invoiceNo = invoiceNo || document.getElementById("customerInvoiceNo")?.value?.trim() || "N/A";
 const custName = document.getElementById("custName")?.value?.trim() || "—";
 const custPhone = document.getElementById("custPhone")?.value?.trim() || "—";
 

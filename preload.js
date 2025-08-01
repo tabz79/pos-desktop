@@ -32,5 +32,8 @@ contextBridge.exposeInMainWorld('api', {
 
   // ✅ New: Import products from CSV rows
   importProductsCSV: (rows) => ipcRenderer.invoke("import-products-csv", rows),
+  regenerateBarcodes: () => ipcRenderer.invoke('regenerate-barcodes'),
+  getProductById: (id) => ipcRenderer.invoke('get-product-by-id', id),
+  printLabel: (options) => ipcRenderer.invoke('print-label', options),
   // ...leave other api functions untouched
 });

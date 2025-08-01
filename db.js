@@ -652,7 +652,7 @@ function importDataDump(dump) {
     }
 }
 
-function importProductsFromCSV(rows) {
+function importProductsFromCSV(rows, generateBarcode) {
   if (!Array.isArray(rows)) {
     return { success: false, message: "Invalid input: Expected an array of rows." };
   }
@@ -714,7 +714,7 @@ function importProductsFromCSV(rows) {
 
       const stock = parseInt(row.stock, 10);
 
-      productsToInsert.push({
+      const newProduct = {
         product_id: productId,
         name: name,
         category: category,
@@ -725,9 +725,11 @@ function importProductsFromCSV(rows) {
         price: sellingPrice,
         gst_percent: taxRate,
         hsn_code: row.hsn_code?.trim() || null,
-        barcode_value: row.barcode_value?.trim() || null,
         stock: !isNaN(stock) && stock >= 0 ? stock : 0,
-      });
+      };
+      newProduct.barcode_value = generateBarcode(newProduct);
+
+      productsToInsert.push(newProduct);
       imported++;
     }
 
@@ -740,6 +742,17 @@ function importProductsFromCSV(rows) {
   } catch (err) {
     console.error("❌ Failed to import products from CSV:", err);
     return { success: false, message: err.message || "An unknown error occurred during the transaction." };
+  }
+}
+
+function getProductById(id) {
+  try {
+    const stmt = db.prepare('SELECT * FROM products WHERE id = ?');
+    const product = stmt.get(id);
+    return product;
+  } catch (err) {
+    console.error("❌ Failed to get product by ID:", err);
+    return null;
   }
 }
 
@@ -758,5 +771,6 @@ module.exports = {
   getInvoices,
   exportDataDump,
   importDataDump,
-  importProductsFromCSV
+  importProductsFromCSV,
+  getProductById
 };

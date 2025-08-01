@@ -5,6 +5,7 @@
   <title>POS System</title>
   <link href="./styles/output.css" rel="stylesheet" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="./node_modules/bwip-js/dist/bwip-js-min.js"></script>
 </head>
 <body class="bg-secondary-light text-gray-900 font-sans h-screen overflow-hidden">
   <div class="flex h-full">
@@ -145,6 +146,9 @@
           <p id="invoice-meta" class="text-xs text-gray-500 mt-1 text-right"></p>
           <div id="invoice-items" class="space-y-2 mb-4 text-sm max-h-64 overflow-y-auto print:overflow-visible print:max-h-full"></div>
           <p id="invoice-total" class="text-right font-semibold text-lg mb-4"></p>
+          <div class="text-center mt-4">
+            <canvas id="invoice-barcode" class="mx-auto"></canvas>
+          </div>
           <div class="flex flex-wrap justify-end items-center gap-2 print:hidden">
             <select id="print-mode" class="border border-secondary-light rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary">
               <option value="thermal">🧾 Thermal (58mm)</option>
