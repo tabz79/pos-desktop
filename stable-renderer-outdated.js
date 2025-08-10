@@ -10,29 +10,25 @@
  * @returns {{product_id: string, barcode_value: string}}
  */
 function parsePriceFromModel(model_name = '') {
-  if (!model_name) return null;
-  model_name = model_name.trim();
+  try {
+    const suffix = (model_name || '').split('-')[1];
+    if (!suffix) return null;
 
-  // Regex for formats like 2k, 1.5h, 10t (at the end of a word or string)
-  const multiplierRegex = /(\d+\.?\d*)\s?([kht])\b/i;
-  const multiplierMatch = model_name.match(multiplierRegex);
-  if (multiplierMatch && multiplierMatch[1] && multiplierMatch[2]) {
-    const value = parseFloat(multiplierMatch[1]);
-    const multiplier = multiplierMatch[2].toLowerCase();
-    const multipliers = { k: 1000, h: 200, t: 20 };
-    if (multipliers[multiplier]) {
-      return value * multipliers[multiplier];
+    const multiplierChar = suffix.slice(-1).toLowerCase();
+    const numericPart = parseFloat(suffix.slice(0, -1));
+
+    if (isNaN(numericPart)) return null;
+
+    const multipliers = { k: 1000, h: 100, t: 10 };
+    const multiplier = multipliers[multiplierChar];
+
+    if (multiplier) {
+      return numericPart * multiplier;
     }
+    return null;
+  } catch (error) {
+    return null;
   }
-
-  // Regex for formats like ₹749, Rs.749, Rs 749
-  const currencyRegex = /(?:₹|Rs\.?)\s?(\d+\.?\d*)/;
-  const currencyMatch = model_name.match(currencyRegex);
-  if (currencyMatch && currencyMatch[1]) {
-    return parseFloat(currencyMatch[1]);
-  }
-
-  return null;
 }
 
 let barcodeCounter = 0;
@@ -261,8 +257,8 @@ function renderSalesPaginationControls(totalPages) {
         </table>
         <div id="productPaginationControls" class="flex justify-center items-center space-x-2 mt-4"></div>
 
-        <div id="productModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50" style="overflow-y: auto;">
-          <div class="bg-white p-6 rounded shadow-lg w-full max-w-md mx-auto my-8">
+        <div id="productModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
+          <div class="bg-white p-6 rounded shadow-lg w-full max-w-md mx-auto">
             <h2 class="text-lg font-semibold mb-4" id="modalTitle">Add Product</h2>
             <input type="text" id="productName" placeholder="Product Name" class="w-full mb-2 p-2 border border-secondary-light rounded focus:outline-none focus:ring-2 focus:ring-primary" />
             <div class="flex gap-2 mb-2">
@@ -823,44 +819,7 @@ function setupProductView() {
   const unitInput = document.getElementById("productUnit");
   const barcodeValueInput = document.getElementById("productBarcodeValue");
 
-  // ✅ START: FIX FOR ISSUE #1 and #2
-  function updateGeneratedIds() {
-    const tempProduct = {
-      name: nameInput.value,
-      category: categorySelect.value,
-      sub_category: subCategoryInput.value,
-      brand: brandInput.value,
-      model_name: modelNameInput.value,
-    };
-    const barcode = generateBarcode(tempProduct);
-    barcodeValueInput.value = barcode;
-    productIdInput.value = barcode;
-  }
-
-  const modalInputs = modal.querySelectorAll('input, select');
-  modalInputs.forEach(input => {
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        saveBtn.click();
-      }
-    });
-  });
-
-  [nameInput, brandInput, modelNameInput].forEach(input => {
-    input.addEventListener('input', updateGeneratedIds);
-  });
-  [categorySelect, subCategoryInput].forEach(select => {
-    select.addEventListener('change', updateGeneratedIds);
-  });
-
-  modelNameInput.addEventListener('input', () => {
-    const price = parsePriceFromModel(modelNameInput.value);
-    if (price !== null) {
-      priceInput.value = price;
-    }
-  });
-  // ✅ END: FIX FOR ISSUE #1 and #2
+  
 
 
   if (categorySelect && hsnInput && gstInput) {
@@ -920,11 +879,7 @@ function setupProductView() {
     const brand = brandInput.value.trim();
     const model_name = modelNameInput.value.trim();
     const unit = unitInput.value.trim();
-    
-    // This is a slight bug in the original code. `payload` is not defined yet.
-    // It should generate the barcode from the collected constants.
-    const tempPayloadForBarcode = { name, category, sub_category, brand, model_name };
-    const barcode_value = generateBarcode(tempPayloadForBarcode);
+    const barcode_value = generateBarcode(payload);
 
     if (!name || isNaN(price) || isNaN(stock)) {
       showToast("⚠️ Please fill all fields correctly.");
@@ -938,12 +893,12 @@ function setupProductView() {
       category: category || null,
       hsn_code: hsn || null,
       gst_percent: isNaN(gst) ? null : gst,
-      product_id: product_id || barcode_value, // Fallback to barcode_value if product_id is empty
+      product_id: product_id || null,
       sub_category: sub_category || null,
       brand: brand || null,
       model_name: model_name || null,
       unit: unit || null,
-      barcode_value: barcode_value
+      barcode_value: barcode_value || null
     };
 
     let result;
@@ -957,7 +912,6 @@ function setupProductView() {
     if (result.success) {
       showToast(editingProductId ? "✏️ Product updated!" : "✅ Product added!");
       modal.classList.add("hidden");
-      if (fixedCart) fixedCart.style.display = "block";
       renderProducts();
     } else {
       showToast("❌ Failed to save product.");
@@ -1101,87 +1055,6 @@ async function updateProductModalSubCategoryDropdown(category) {
 }
 
 
-async function renderInvoice(cartItems, invoiceNo) {
-  const storeSettings = await window.api.getStoreSettings();
-  const invoiceModal = document.getElementById('invoice-modal');
-  const invoiceHeader = document.getElementById('invoice-header');
-  const invoiceMeta = document.getElementById('invoice-meta');
-  const invoiceItems = document.getElementById('invoice-items');
-  const invoiceTotal = document.getElementById('invoice-total');
-
-  // 1. Populate Store Info
-  if (storeSettings) {
-    invoiceHeader.innerHTML = `
-      <h2 class="text-2xl font-bold">${storeSettings.store_name}</h2>
-      <p class="text-sm">${storeSettings.store_address}</p>
-      <p class="text-sm">Phone: ${storeSettings.store_phone}</p>
-      ${storeSettings.store_gstin ? `<p class="text-sm">GSTIN: ${storeSettings.store_gstin}</p>` : ''}
-    `;
-  }
-
-  // 2. Populate Invoice Meta
-  const now = new Date();
-  invoiceMeta.textContent = `Invoice: ${invoiceNo} | Date: ${now.toLocaleDateString()} ${now.toLocaleTimeString()}`;
-
-  // 3. Populate Invoice Items
-  invoiceItems.innerHTML = '';
-  let subtotal = 0;
-  let totalGST = 0;
-
-  const itemRows = cartItems.map(item => {
-    const product = allProducts.find(p => p.id === item.id);
-    const rate = item.price || 0;
-    const qty = item.quantity || 1;
-    const gst = item.gst_percent || product?.gst_percent || 0;
-    const discount = item.discount || 0;
-
-    const totalMRP = rate * qty;
-    const gstFraction = gst / (100 + gst);
-    const gstAmount = totalMRP * gstFraction;
-    const base = totalMRP - gstAmount;
-    const discountedBase = base - discount;
-    const finalAmount = discountedBase + gstAmount;
-
-    subtotal += discountedBase;
-    totalGST += gstAmount;
-
-    return `
-      <div class="grid grid-cols-12 gap-2 border-b py-1">
-        <div class="col-span-6">${item.name}</div>
-        <div class="col-span-2 text-right">${qty}</div>
-        <div class="col-span-2 text-right">₹${rate.toFixed(2)}</div>
-        <div class="col-span-2 text-right">₹${finalAmount.toFixed(2)}</div>
-      </div>
-    `;
-  }).join('');
-
-  invoiceItems.innerHTML = `
-    <div class="grid grid-cols-12 gap-2 font-semibold bg-gray-100 p-1">
-      <div class="col-span-6">Item</div>
-      <div class="col-span-2 text-right">Qty</div>
-      <div class="col-span-2 text-right">Rate</div>
-      <div class="col-span-2 text-right">Amount</div>
-    </div>
-    ${itemRows}
-  `;
-
-  // 4. Populate Totals
-  const grandTotal = subtotal + totalGST;
-  invoiceTotal.innerHTML = `
-    <div class="space-y-1">
-      <div class="flex justify-between"><span class="font-medium">Subtotal:</span> <span>₹${subtotal.toFixed(2)}</span></div>
-      <div class="flex justify-between"><span class="font-medium">Total GST:</span> <span>₹${totalGST.toFixed(2)}</span></div>
-      <div class="flex justify-between font-bold text-xl"><span >Grand Total:</span> <span>₹${grandTotal.toFixed(2)}</span></div>
-    </div>
-  `;
-
-  // 6. Show the modal
-  invoiceModal.classList.remove('hidden');
-
-  // 7. Ensure DOM is updated before returning
-  await new Promise(resolve => requestAnimationFrame(resolve));
-}
-
 async function renderView(viewName) {
   currentTab = viewName; // Update currentTab on view change
   app.innerHTML = views[viewName] || `<p>Unknown view: ${viewName}</p>`;
@@ -1297,13 +1170,11 @@ async function renderView(viewName) {
     const checkoutBtn = document.querySelector("#fixed-cart-ui #checkoutBtn");
     if (checkoutBtn) {
       // 🛒 Step 2C — Show Cart Overlay on button click
-      checkoutBtn.addEventListener("click", () => {
+      checkoutBtn.addEventListener("click", async () => {
         const cartOverlay = document.getElementById("cartOverlay");
         if (cartOverlay) {
           cartOverlay.classList.remove("hidden");
-          renderCartOverlay();
-        } else {
-          completeSaleAndPrint();
+          await renderCartOverlay(); // Await the async function call
         }
       });
     }
@@ -1704,108 +1575,98 @@ async function renderCartOverlay() {
   // ✅ Call footer update here
   updateCartSummaryFooter();
 
-  async function completeSaleAndPrint() {
-  console.log('Renderer: Before print call.');
-  const invoiceModalEl = document.getElementById('invoice-modal');
-  
-  // First, save the sale and get the final invoice details
-  const customerName = document.getElementById("customerName")?.value || "";
-  const customerPhone = document.getElementById("customerPhone")?.value || "";
-  const gstin = document.getElementById("custGSTIN")?.value?.trim() || null;
-  const invoiceNo = document.getElementById("customerInvoiceNo")?.value || generateInvoiceNumber();
-  const paymentMethod = document.getElementById("paymentMode")?.value?.trim() || "Cash";
-
-  if (!invoiceNo || cart.length === 0) {
-    showToast(cart.length === 0 ? "🛒 Cart is empty." : "⚠️ Invoice number missing.");
-    return;
-  }
-
-  const itemsWithAmount = cart.map(item => {
-    const product = allProducts.find(p => p.id === item.id);
-    const rate = item.price ?? 0;
-    const qty = item.quantity ?? 1;
-    const gst = item.gst_percent ?? product?.gst_percent ?? 0;
-    const discount = item.discount ?? 0;
-    const totalMRP = rate * qty;
-    const gstFraction = gst / (100 + gst);
-    const gstAmount = totalMRP * gstFraction;
-    const base = totalMRP - gstAmount;
-    const discountedBase = base - discount;
-    const finalAmount = discountedBase + gstAmount;
-    return { ...item, product_id: product?.product_id || null, final_amount: parseFloat(finalAmount.toFixed(2)) };
-  });
-
-  const salePayload = {
-    invoice_no: activeInvoiceNo,
-    timestamp: new Date().toISOString(),
-    customer_name: customerName,
-    customer_phone: customerPhone,
-    customer_gstin: gstin,
-    payment_method: paymentMethod,
-    items: itemsWithAmount
-  };
-
-  const result = await window.api.saveSale(salePayload);
-  if (!result?.success) {
-    showToast("❌ Failed to save sale.");
-    return;
-  }
-  
-  // Now that sale is saved, render the invoice for printing
-  const clonedCart = structuredClone(itemsWithAmount);
-  await renderInvoice(clonedCart, result.invoice_no);
-
-  // Clone the invoice modal to avoid altering the visible one
-  if (!invoiceModalEl) {
-    showToast("Error: Invoice modal not found.");
-    // Call doPostPrintCleanup here if the modal is not found, to ensure cleanup happens
-    doPostPrintCleanup(result);
-    return;
-  }
-  invoiceModalEl.classList.remove("hidden");
-
-  const printMode = "thermal-80";
-  const invoiceClone = invoiceModalEl.cloneNode(true);
-  
-
-  const printHtml = `
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <title>Invoice ${result.invoice_no}</title>
-        <link rel="stylesheet" href="./styles/output.css">
-        <style>
-            @media print {
-                .no-print, .print\:hidden { display: none !important; }
-                table { width: 100%; border-collapse: collapse; }
-                th, td { border: 1px solid #ccc; padding: 6px; text-align: left; }
-            }
-        </style>
-    </head>
-    <body>${invoiceClone.innerHTML}</body>
-    </html>`;
-
-  try {
-    if (window.api && typeof window.api.printInvoice === "function") {
-      await window.api.printInvoice({ html: printHtml, mode: printMode });
-    } else {
-      console.error("printInvoice function is not available");
-      showToast("❌ Printing service not available.");
-    }
-  } catch (err) {
-    console.error("Printing failed:", err);
-    showToast("🖨️ Print failed. Check printer connection.");
-  } finally {
-    // This now correctly runs after the print job is sent.
-    doPostPrintCleanup(result);
-  }
-}
-
   const confirmBtn = document.getElementById("cartCheckoutBtn");
   if (confirmBtn) {
 	  confirmBtn.disabled = false; // 👈 this is what’s missing!
-    confirmBtn.onclick = completeSaleAndPrint;
+    confirmBtn.onclick = async () => {
+        const invoiceNo = document.getElementById("customerInvoiceNo")?.value?.trim() || "N/A";
+        const custName = document.getElementById("custName")?.value?.trim() || "—";
+        const custPhone = document.getElementById("custPhone")?.value?.trim() || "—";
+
+      const name = document.getElementById("custName")?.value?.trim() || null;
+      const phone = document.getElementById("custPhone")?.value?.trim() || null;
+      const gstin = document.getElementById("custGSTIN")?.value?.trim() || null;
+
+      if (!invoiceNo) {
+        showToast("⚠️ Invoice number missing.");
+        return;
+      }
+
+      if (cart.length === 0) {
+        showToast("🛒 Cart is empty.");
+        return;
+      }
+
+      const itemsWithAmount = cart.map(item => {
+        const product = allProducts.find(p => p.id === item.id); // Find the product here
+        const rate = item.price ?? 0;
+        const qty = item.quantity ?? 1;
+        const gst = item.gst_percent ?? product?.gst_percent ?? 0; // Use optional chaining for product
+        const discount = item.discount ?? 0;
+
+        const totalMRP = rate * qty;
+        const gstFraction = gst / (100 + gst);
+        const gstAmount = totalMRP * gstFraction;
+        const base = totalMRP - gstAmount;
+        const discountedBase = base - discount;
+        const finalAmount = discountedBase + gstAmount;
+
+        return {
+          ...item,
+          product_id: product?.product_id || null, // Pass the generated product_id string
+          final_amount: parseFloat(finalAmount.toFixed(2)),
+        };
+      });
+const paymentMethod = document.getElementById("paymentMode")?.value?.trim() || "Cash";
+const salePayload = {
+  invoice_no: activeInvoiceNo, // Use the stored activeInvoiceNo
+  timestamp: new Date().toISOString(),
+  customer_name: name,
+  customer_phone: phone,
+  customer_gstin: gstin,
+  payment_method: paymentMethod, // ✅ now included
+  items: itemsWithAmount
+};
+
+
+try {
+  const result = await window.api.saveSale(salePayload);
+  console.log("🧾 Final Invoice No used:", result.invoice_no); // Debug log
+
+  if (result?.success) {
+    const invoiceNo = result.invoice_no;
+
+    // ✅ Inject confirmed invoice number into DOM first
+    const invoiceInput = document.getElementById("customerInvoiceNo");
+    if (invoiceInput && invoiceNo) {
+      invoiceInput.value = invoiceNo;
+    }
+
+    const clonedCart = structuredClone(itemsWithAmount); // ✅ Clone after DOM is updated
+    showInvoice(clonedCart, invoiceNo); // ✅ Now pulls correct invoice number
+
+    showToast("✅ Sale saved!");
+    cart.length = 0;
+    updateCartUI();
+    document.getElementById("cartOverlay").classList.add("hidden");
+    activeInvoiceNo = null; // Clear activeInvoiceNo after successful sale
+
+    // ✅ Save serial part for preview
+    if (invoiceNo.length >= 15) {
+      const prefix = invoiceNo.slice(3, 11);
+      const serial = parseInt(invoiceNo.slice(-4));
+      if (!isNaN(serial)) {
+        localStorage.setItem(`lastInvoiceNumber_inv${prefix}`, serial);
+      }
+    }
+  } else {
+    showToast("❌ Failed to save sale.");
+  }
+} catch (err) {
+  console.error("❌ saveSale error:", err);
+  showToast("⚠️ Could not save. Try again.");
+}
+    };
   }
 // ✅ Wire Preview Invoice button ONCE when overlay is rendered
 const previewBtn = document.getElementById("previewInvoiceBtn");
@@ -2278,8 +2139,8 @@ async function renderInvoice(items, invoiceNo) {
   const invoiceItemsDiv = document.getElementById("invoice-items");
   const invoiceTotalP = document.getElementById("invoice-total");
   const invoiceMeta = document.getElementById("invoice-meta");
-  const printMode = document.getElementById("print-mode")?.value || "thermal-80"; // Default to 80mm invoice
-  document.body.classList.remove("print-thermal-58", "print-thermal-80", "print-a4"); // Remove all possible print classes
+  const printMode = document.getElementById("print-mode")?.value || "thermal";
+  document.body.classList.remove("print-thermal", "print-a4");
   document.body.classList.add(`print-${printMode}`);
 
   const canvas = document.getElementById("invoice-barcode");
