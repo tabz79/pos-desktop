@@ -637,7 +637,7 @@ async function setupInvoiceHistoryView() {
 window.viewInvoice = async function(id) {
   const invoice = await window.api.getInvoiceDetails(id);
   if (invoice) {
-    populateInvoiceModal(invoice.items, invoice.invoice_no);
+    renderInvoice(invoice.items, invoice.invoice_no);
   }
 }
 
@@ -1101,118 +1101,85 @@ async function updateProductModalSubCategoryDropdown(category) {
 }
 
 
-async function populateInvoiceModal(cartItems, invoiceNo) {
+async function renderInvoice(cartItems, invoiceNo) {
   const storeSettings = await window.api.getStoreSettings();
+  const invoiceModal = document.getElementById('invoice-modal');
   const invoiceHeader = document.getElementById('invoice-header');
   const invoiceMeta = document.getElementById('invoice-meta');
   const invoiceItems = document.getElementById('invoice-items');
   const invoiceTotal = document.getElementById('invoice-total');
 
-  // Store Header
-  let headerHTML = `
-    <div class="text-center mb-1">
-      <div class="text-lg font-bold">${storeSettings?.store_name || "Asian Sports"}</div>
-      <div class="text-sm">No. 1 Store for All Your Sporting&nbsp;needs</div>
-      <div class="border-t border-b my-1 py-0.5 text-sm font-semibold">TAX INVOICE</div>
-    </div>
-    <div class="text-xs leading-tight mt-1 text-left">
-      ${storeSettings?.store_address || "Yellandu Cross Road, IT Hub Circle"}<br>
-      ${storeSettings?.store_city || "Khammam-507001"}
-      <div class="mt-1">📞 ${storeSettings?.store_phone || "1234567890"}</div>
-      <div class="border-t my-1"></div>
-      <div>GSTIN: ${storeSettings?.store_gstin || "N/A"}</div>
-    </div>
-  `;
-  if (invoiceHeader) invoiceHeader.innerHTML = headerHTML;
+  // 1. Populate Store Info
+  if (storeSettings) {
+    invoiceHeader.innerHTML = `
+      <h2 class="text-2xl font-bold">${storeSettings.store_name}</h2>
+      <p class="text-sm">${storeSettings.store_address}</p>
+      <p class="text-sm">Phone: ${storeSettings.store_phone}</p>
+      ${storeSettings.store_gstin ? `<p class="text-sm">GSTIN: ${storeSettings.store_gstin}</p>` : ''}
+    `;
+  }
 
-  // Invoice Meta
+  // 2. Populate Invoice Meta
   const now = new Date();
-  const metaHTML = `
-    <div class="text-xs mb-1">
-      <div>Invoice No: ${invoiceNo}</div>
-      <div>Date: ${now.toLocaleDateString()} ${now.toLocaleTimeString()}</div>
-    </div>
-  `;
-  if (invoiceMeta) invoiceMeta.innerHTML = metaHTML;
+  invoiceMeta.textContent = `Invoice: ${invoiceNo} | Date: ${now.toLocaleDateString()} ${now.toLocaleTimeString()}`;
 
-  // Customer Details
-  const customerName = document.getElementById("customerName")?.value || "";
-  const customerPhone = document.getElementById("customerPhone")?.value || "";
-  const custGSTIN = document.getElementById("custGSTIN")?.value || "";
-  const customerHTML = `
-    <div class="text-xs border-t pt-1">
-      <div>Customer: ${customerName}</div>
-      <div>Phone: ${customerPhone}</div>
-      ${custGSTIN ? `<div>GSTIN: ${custGSTIN}</div>` : ''}
-    </div>
-  `;
-  const customerSection = document.getElementById("invoice-customer");
-  if (customerSection) customerSection.innerHTML = customerHTML;
-
-  // Items
-  let totalAmount = 0;
+  // 3. Populate Invoice Items
+  invoiceItems.innerHTML = '';
+  let subtotal = 0;
   let totalGST = 0;
-  let totalDiscount = 0;
-  const itemsHTML = cartItems.map((item, index) => {
-    const product = allProducts.find(p => p.id === item.id) || {};
-    const gstRate = item.gst_percent || product.gst_percent || 0;
+
+  const itemRows = cartItems.map(item => {
+    const product = allProducts.find(p => p.id === item.id);
+    const rate = item.price || 0;
     const qty = item.quantity || 1;
-    const price = item.price || 0;
+    const gst = item.gst_percent || product?.gst_percent || 0;
     const discount = item.discount || 0;
 
-    const gross = price * qty;
-    const baseAmount = gross / (1 + gstRate / 100);
-    const gstAmount = gross - baseAmount;
-    const finalAmount = gross - discount;
+    const totalMRP = rate * qty;
+    const gstFraction = gst / (100 + gst);
+    const gstAmount = totalMRP * gstFraction;
+    const base = totalMRP - gstAmount;
+    const discountedBase = base - discount;
+    const finalAmount = discountedBase + gstAmount;
 
-    totalAmount += finalAmount;
+    subtotal += discountedBase;
     totalGST += gstAmount;
-    totalDiscount += discount;
 
     return `
-      <div class="grid grid-cols-12 gap-1 text-xs py-0.5 border-b">
-        <div class="col-span-1">${index + 1}</div>
-        <div class="col-span-5">${item.name}</div>
-        <div class="col-span-1 text-right">₹${price.toFixed(2)}</div>
-        <div class="col-span-1 text-right">${gstRate}%</div>
-        <div class="col-span-1 text-right">₹${gstAmount.toFixed(2)}</div>
-        <div class="col-span-1 text-right">${qty}</div>
-        <div class="col-span-1 text-right">₹${discount.toFixed(2)}</div>
-        <div class="col-span-1 text-right">₹${finalAmount.toFixed(2)}</div>
+      <div class="grid grid-cols-12 gap-2 border-b py-1">
+        <div class="col-span-6">${item.name}</div>
+        <div class="col-span-2 text-right">${qty}</div>
+        <div class="col-span-2 text-right">₹${rate.toFixed(2)}</div>
+        <div class="col-span-2 text-right">₹${finalAmount.toFixed(2)}</div>
       </div>
     `;
-  }).join("");
+  }).join('');
 
-  const headerRow = `
-    <div class="grid grid-cols-12 gap-1 text-xs font-medium bg-gray-100 py-0.5">
-      <div class="col-span-1">S.No</div>
-      <div class="col-span-5">Item</div>
-      <div class="col-span-1 text-right">Rate</div>
-      <div class="col-span-1 text-right">GST%</div>
-      <div class="col-span-1 text-right">GST Amt</div>
-      <div class="col-span-1 text-right">Qty</div>
-      <div class="col-span-1 text-right">Disc.</div>
-      <div class="col-span-1 text-right">Amt</div>
+  invoiceItems.innerHTML = `
+    <div class="grid grid-cols-12 gap-2 font-semibold bg-gray-100 p-1">
+      <div class="col-span-6">Item</div>
+      <div class="col-span-2 text-right">Qty</div>
+      <div class="col-span-2 text-right">Rate</div>
+      <div class="col-span-2 text-right">Amount</div>
+    </div>
+    ${itemRows}
+  `;
+
+  // 4. Populate Totals
+  const grandTotal = subtotal + totalGST;
+  invoiceTotal.innerHTML = `
+    <div class="space-y-1">
+      <div class="flex justify-between"><span class="font-medium">Subtotal:</span> <span>₹${subtotal.toFixed(2)}</span></div>
+      <div class="flex justify-between"><span class="font-medium">Total GST:</span> <span>₹${totalGST.toFixed(2)}</span></div>
+      <div class="flex justify-between font-bold text-xl"><span >Grand Total:</span> <span>₹${grandTotal.toFixed(2)}</span></div>
     </div>
   `;
 
-  if (invoiceItems) invoiceItems.innerHTML = headerRow + itemsHTML;
+  // 6. Show the modal
+  invoiceModal.classList.remove('hidden');
 
-  // Totals
-  const cgst = totalGST / 2;
-  const sgst = totalGST / 2;
-  const grandTotal = totalAmount;
-  const payable = grandTotal;
-
-  invoiceTotal.innerHTML = `
-    <div class="text-sm mt-3 border-t pt-2 text-right">
-      <div>Total GST: ₹${totalGST.toFixed(2)}</div>
-      <div>CGST + SGST: ₹${cgst.toFixed(2)} + ₹${sgst.toFixed(2)}</div>
-      <div>Total Amount: ₹${(grandTotal + totalDiscount).toFixed(2)}</div>
-      <div class="text-red-600">Discount: − ₹${totalDiscount.toFixed(2)}</div>
-      <div class="text-lg font-bold mt-1">Payable: ₹${payable.toFixed(2)}</div>
-      <div class="text-center mt-4 font-medium"> Thank you! Visit again.</div>
-    </div>`;
+  // 7. Ensure DOM is updated before returning
+  await new Promise(resolve => requestAnimationFrame(resolve));
 }
 
 async function renderView(viewName) {
@@ -1252,8 +1219,8 @@ async function renderView(viewName) {
   }
 
   if (viewName === "Sales") {
-    const salesViewCartElement = document.getElementById("fixed-cart-ui");
-    if (salesViewCartElement) salesViewCartElement.classList.remove("hidden");
+    const cart = document.getElementById("fixed-cart-ui");
+    if (cart) cart.classList.remove("hidden");
 
     if (!productsLoaded) {
         const salesProductList = document.getElementById('salesProductList');
@@ -1791,7 +1758,7 @@ async function renderCartOverlay() {
   
   // Now that sale is saved, render the invoice for printing
   const clonedCart = structuredClone(itemsWithAmount);
-  await populateInvoiceModal(clonedCart, result.invoice_no);
+  await renderInvoice(clonedCart, result.invoice_no);
 
   // Clone the invoice modal to avoid altering the visible one
   if (!invoiceModalEl) {
@@ -1833,17 +1800,11 @@ async function renderCartOverlay() {
 const previewBtn = document.getElementById("previewInvoiceBtn");
 if (previewBtn) {
   previewBtn.onclick = () => {
-    try {
-      if (cart.length === 0) {
-        showToast("🛒 Cart is empty.");
-        return;
-      }
-      populateInvoiceModal([...cart], activeInvoiceNo || Date.now());
-      document.getElementById('invoice-modal').classList.remove('hidden');
-    } catch (err) {
-      console.error('Error rendering invoice preview:', err);
-      showToast("❌ Error generating preview.");
+    if (cart.length === 0) {
+      showToast("🛒 Cart is empty.");
+      return;
     }
+    renderInvoice([...cart], activeInvoiceNo);
   };
 }
   // Attach Global Discount Button (after overlay renders)
@@ -2100,6 +2061,16 @@ window.addToCart = async function (id, name, price) {
   showToast(`🛒 ${name} added`);
   await updateCartUI();
   updateCartSummaryFooter();  // ✅ live recalc
+  const previewBtn = document.getElementById("previewInvoiceBtn");
+if (previewBtn) {
+  previewBtn.addEventListener("click", () => {
+    if (cart.length === 0) {
+      showToast("🛒 Cart is empty.");
+      return;
+    }
+    renderInvoice([...cart]);
+  });
+}
 };
 window.updateCartItem = async function (id, field, value) {
   const item = cart.find(p => p.id === id);
@@ -2149,29 +2120,29 @@ window.updateCartItem = async function (id, field, value) {
     const productIdInput = document.getElementById("productProductId");
 
     editingProductId = id;
-    nameInput.value = product.name;
-    priceInput.value = product.price;
-    stockInput.value = product.stock;
-    hsnInput.value = product.hsn_code || "";
-    gstInput.value = product.gst_percent ?? "";
+    nameInput.value = name;
+    priceInput.value = price;
+    stockInput.value = stock;
+    hsnInput.value = hsn_code || "";
+    gstInput.value = gst_percent ?? "";
     
     // Handle category selection properly
-    if (product.category && categorySelect) {
+    if (category && categorySelect) {
       // Check if category exists in dropdown, if not add it
-      const categoryExists = Array.from(categorySelect.options).some(option => option.value === product.category);
-      if (!categoryExists && product.category) {
-        categorySelect.innerHTML += `<option value="${product.category}">${product.category}</option>`;
+      const categoryExists = Array.from(categorySelect.options).some(option => option.value === category);
+      if (!categoryExists && category) {
+        categorySelect.innerHTML += `<option value="${category}">${category}</option>`;
       }
-      categorySelect.value = product.category;
+      categorySelect.value = category;
       // Trigger change event to populate HSN/GST and sub-category
       categorySelect.dispatchEvent(new Event('change'));
     }
 
     // Populate sub-category dropdown for editing
-    if (product.category) {
+    if (category) {
       (async () => {
-        await updateProductModalSubCategoryDropdown(product.category);
-        subCategoryInput.value = product.sub_category || "";
+        await updateProductModalSubCategoryDropdown(category);
+        subCategoryInput.value = allProducts.find(p => p.id === id)?.sub_category || "";
       })();
     } else {
       subCategoryInput.innerHTML = `<option value="">Select Sub Category</option>`;
@@ -2179,12 +2150,12 @@ window.updateCartItem = async function (id, field, value) {
     }
     
     // Set other fields if they exist
-    if (brandInput) brandInput.value = product.brand || "";
-    if (modelNameInput) modelNameInput.value = product.model_name || "";
-    if (unitInput) unitInput.value = product.unit || "";
-    if (subCategoryInput) subCategoryInput.value = product.sub_category || "";
-    if (barcodeValueInput) barcodeValueInput.value = product.barcode_value || "";
-    if (productIdInput) productIdInput.value = product.product_id || "";
+    if (brandInput) brandInput.value = "";
+    if (modelNameInput) modelNameInput.value = "";
+    if (unitInput) unitInput.value = "";
+    if (subCategoryInput) subCategoryInput.value = "";
+    if (barcodeValueInput) barcodeValueInput.value = "";
+    if (productIdInput) productIdInput.value = "";
     
     modalTitle.textContent = "Edit Product";
     modal.classList.remove("hidden");
@@ -2305,7 +2276,7 @@ function applyGlobalDiscount(type, value) {
   }
 
   renderCartOverlay();  // ✅ triggers live update
-  // 🧾 Wire Preview Invoice button inside
+  // 🧾 Wire Preview Invoice button inside cart overlay
 }
 function showToast(message) {
   const toast = document.getElementById("toast");
@@ -2346,142 +2317,4 @@ if (!window.deleteProduct) {
       }
     }
   };
-}
-
-// Unified invoice population for both preview and checkout
-async function populateInvoiceModal(items = [], invoiceNo = '0000') {
-  const invoiceHeaderEl = document.getElementById('invoice-header');
-  const invoiceMetaEl = document.getElementById('invoice-meta');
-  const invoiceItemsEl = document.getElementById('invoice-items');
-  const invoiceTotalEl = document.getElementById('invoice-total');
-
-  const settings = await (window.api && window.api.getStoreSettings ? window.api.getStoreSettings() : Promise.resolve(null));
-
-  if (invoiceHeaderEl && settings) {
-    const storeName = settings.store_name || 'Your Store';
-    const subtitle = settings.store_subtitle ? `<div class="text-sm">${settings.store_subtitle}</div>` : '';
-    const addr = settings.store_address ? settings.store_address.split(',').map(s => s.trim()) : [];
-    const addrTop = addr.slice(0, -1).join(', ');
-    const addrLast = addr.length ? addr.slice(-1)[0] : '';
-    const phoneLine = settings.store_phone ? `<div class="mt-1">📞 ${settings.store_phone}</div>` : '';
-    const gstLine = settings.store_gstin ? `<div>GSTIN: ${settings.store_gstin}</div>` : '';
-
-    invoiceHeaderEl.innerHTML = `
-      <div class="text-center mb-1">
-        <div class="text-lg font-bold">${storeName}</div>
-        ${subtitle}
-        <div class="border-t border-b my-1 py-0.5 text-sm font-semibold">TAX INVOICE</div>
-      </div>
-      <div class="text-xs leading-tight mt-1 text-left">
-        ${addrTop ? `${addrTop}<br>` : ''}
-        ${addrLast ? `${addrLast}<br>` : ''}
-        ${phoneLine}
-        <div class="border-t my-1"></div>
-        ${gstLine}
-      </div>
-    `;
-  } else if (invoiceHeaderEl) {
-    invoiceHeaderEl.innerHTML = `<div class="text-lg font-bold">Your Store</div>`;
-  }
-
-  if (invoiceMetaEl) {
-    const now = new Date();
-    invoiceMetaEl.textContent = `INV${invoiceNo} | Date: ${now.toLocaleDateString()} ${now.toLocaleTimeString()}`;
-  }
-
-  const customerNameEl = document.getElementById('invoice-customer-name');
-  const customerPhoneEl = document.getElementById('invoice-customer-phone');
-  if (customerNameEl) {
-    const nameVal = document.getElementById('customerName')?.value || '';
-    customerNameEl.textContent = nameVal;
-  }
-  if (customerPhoneEl) {
-    const phoneVal = document.getElementById('customerPhone')?.value || '';
-    customerPhoneEl.textContent = phoneVal;
-  }
-
-  if (!invoiceItemsEl) return;
-
-  invoiceItemsEl.innerHTML = '';
-
-  let serial = 0;
-  let grossBaseSum = 0;
-  let totalGST = 0;
-  let totalDiscount = 0;
-  const rows = items.map(item => {
-    serial++;
-    const product = allProducts.find(p => p.id === item.id) || {};
-    const rate = +(item.price || 0);
-    const qty = +(item.quantity || 1);
-    const gst = +((item.gst_percent !== undefined && item.gst_percent !== null) ? item.gst_percent : (product.gst_percent || 0));
-    const discount = +(item.discount || 0);
-
-    const totalMRP = rate * qty;
-    const gstFraction = gst / (100 + gst);
-    const gstAmount = +(totalMRP * gstFraction);
-    const base = totalMRP - gstAmount;
-    const discountedBase = base - discount;
-    const finalAmount = +(discountedBase + gstAmount);
-
-    grossBaseSum += base;
-    totalGST += gstAmount;
-    totalDiscount += discount;
-
-    const rateFmt = `₹${rate.toFixed(2)}`;
-    const gstPctFmt = `${gst}%`;
-    const gstAmtFmt = `₹${gstAmount.toFixed(2)}`;
-    const qtyFmt = `${qty}`;
-    const discFmt = `₹${discount.toFixed(2)}`;
-    const amountFmt = `₹${finalAmount.toFixed(2)}`;
-
-    return `
-      <div class="grid grid-cols-12 gap-2 border-b py-1">
-        <div class="col-span-1 text-sm">${serial}</div>
-        <div class="col-span-5 text-sm">${item.name}</div>
-        <div class="col-span-1 text-right text-sm">${rateFmt}</div>
-        <div class="col-span-1 text-right text-sm">${gstPctFmt}</div>
-        <div class="col-span-1 text-right text-sm">${gstAmtFmt}</div>
-        <div class="col-span-1 text-right text-sm">${qtyFmt}</div>
-        <div class="col-span-1 text-right text-sm">${discFmt}</div>
-        <div class="col-span-2 text-right text-sm">${amountFmt}</div>
-      </div>
-    `;
-  });
-
-  const headerRow = `
-    <div class="grid grid-cols-12 gap-2 font-semibold bg-gray-100 p-1 text-xs">
-      <div class="col-span-1">S.No</div>
-      <div class="col-span-5">Item</div>
-      <div class="col-span-1 text-right">Rate</div>
-      <div class="col-span-1 text-right">GST%</div>
-      <div class="col-span-1 text-right">GST Amt</div>
-      <div class="col-span-1 text-right">Qty</div>
-      <div class="col-span-1 text-right">Disc.</div>
-      <div class="col-span-2 text-right">Amount</div>
-    </div>
-  `;
-
-  invoiceItemsEl.innerHTML = headerRow + rows.join('');
-
-  const totalAmountBeforeDiscount = grossBaseSum + totalGST;
-  const cgst = +(totalGST / 2);
-  const sgst = +(totalGST / 2);
-  const payable = +(totalAmountBeforeDiscount - totalDiscount);
-
-  if (invoiceTotalEl) {
-    invoiceTotalEl.innerHTML = `
-      <div class="space-y-1 text-sm">
-        <div class="flex justify-between"><span class="font-medium">Total GST:</span> <span>₹${totalGST.toFixed(2)}</span></div>
-        <div class="flex justify-between"><span class="font-medium">CGST + SGST:</span> <span>₹${cgst.toFixed(2)} + ₹${sgst.toFixed(2)}</span></div>
-        <div class="flex justify-between"><span class="font-medium">Total Amount:</span> <span>₹${totalAmountBeforeDiscount.toFixed(2)}</span></div>
-        <div class="flex justify-between"><span class="font-medium">Discount:</span> <span>- ₹${totalDiscount.toFixed(2)}</span></div>
-        <div class="flex justify-between font-bold text-xl"><span>Payable:</span> <span>₹${payable.toFixed(2)}</span></div>
-      </div>
-      <div class="mt-3 text-sm">Thank you! Visit again.</div>
-    `;
-  }
-
-  const modal = document.getElementById('invoice-modal');
-  if (modal) modal.classList.remove('hidden');
-  await new Promise(resolve => requestAnimationFrame(resolve));
 }

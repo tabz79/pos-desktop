@@ -1118,85 +1118,62 @@ async function populateInvoiceModal(cartItems, invoiceNo) {
     <div class="text-xs leading-tight mt-1 text-left">
       ${storeSettings?.store_address || "Yellandu Cross Road, IT Hub Circle"}<br>
       ${storeSettings?.store_city || "Khammam-507001"}
-      <div class="mt-1">📞 ${storeSettings?.store_phone || "1234567890"}</div>
+      <div class="mt-1">📞 ${storeSettings?.store_phone || "9985624684"}</div>
       <div class="border-t my-1"></div>
-      <div>GSTIN: ${storeSettings?.store_gstin || "N/A"}</div>
-    </div>
-  `;
-  if (invoiceHeader) invoiceHeader.innerHTML = headerHTML;
+      ${storeSettings?.store_gstin ? `<div>GSTIN: ${storeSettings.store_gstin}</div>` : "GSTIN: 07ABCDE1234F2Z5"}
+    </div>`;
+  invoiceHeader.innerHTML = headerHTML;
 
-  // Invoice Meta
+  // Meta (Invoice No, Date)
   const now = new Date();
-  const metaHTML = `
-    <div class="text-xs mb-1">
-      <div>Invoice No: ${invoiceNo}</div>
-      <div>Date: ${now.toLocaleDateString()} ${now.toLocaleTimeString()}</div>
-    </div>
-  `;
-  if (invoiceMeta) invoiceMeta.innerHTML = metaHTML;
+  invoiceMeta.textContent = `Invoice: ${invoiceNo} | Date: ${now.toLocaleDateString()} ${now.toLocaleTimeString()}`;
 
-  // Customer Details
-  const customerName = document.getElementById("customerName")?.value || "";
-  const customerPhone = document.getElementById("customerPhone")?.value || "";
-  const custGSTIN = document.getElementById("custGSTIN")?.value || "";
-  const customerHTML = `
-    <div class="text-xs border-t pt-1">
-      <div>Customer: ${customerName}</div>
-      <div>Phone: ${customerPhone}</div>
-      ${custGSTIN ? `<div>GSTIN: ${custGSTIN}</div>` : ''}
-    </div>
-  `;
-  const customerSection = document.getElementById("invoice-customer");
-  if (customerSection) customerSection.innerHTML = customerHTML;
+  // Customer info
+  const custName = document.getElementById('custName')?.value || "";
+  const custPhone = document.getElementById('custPhone')?.value || "";
+  let customerInfoHTML = "";
+  if (custName) customerInfoHTML += `<div class="text-sm font-semibold mt-1">${custName}</div>`;
+  if (custPhone) customerInfoHTML += `<div class="text-sm">${custPhone}</div>`;
 
-  // Items
-  let totalAmount = 0;
+  // Items table
+  let itemsHTML = `<table class="w-full text-xs border-collapse">
+    <thead>
+      <tr class="border-b border-dotted border-gray-400 text-left">
+        <th class="p-1">S.No</th>
+        <th class="p-1">Item</th>
+        <th class="p-1 text-right">Rate</th>
+        <th class="p-1 text-right">GST%</th>
+        <th class="p-1 text-right">GST Amt</th>
+        <th class="p-1 text-right">Qty</th>
+        <th class="p-1 text-right">Disc.</th>
+        <th class="p-1 text-right">Amount</th>
+      </tr>
+    </thead>
+    <tbody>`;
+
   let totalGST = 0;
+  let totalAmount = 0;
   let totalDiscount = 0;
-  const itemsHTML = cartItems.map((item, index) => {
-    const product = allProducts.find(p => p.id === item.id) || {};
-    const gstRate = item.gst_percent || product.gst_percent || 0;
-    const qty = item.quantity || 1;
-    const price = item.price || 0;
-    const discount = item.discount || 0;
+  cartItems.forEach((item, idx) => {
+    const gstAmt = (item.price * item.gst_percent / (100 + item.gst_percent)) * item.quantity;
+    const lineTotal = item.price * item.quantity - (item.discount || 0);
+    totalGST += gstAmt;
+    totalAmount += lineTotal;
+    totalDiscount += (item.discount || 0);
+    itemsHTML += `<tr class="border-b border-dotted border-gray-300">
+      <td class="p-1">${idx + 1}</td>
+      <td class="p-1">${item.name}</td>
+      <td class="p-1 text-right">₹${item.price.toFixed(2)}</td>
+      <td class="p-1 text-right">${item.gst_percent}%</td>
+      <td class="p-1 text-right">₹${gstAmt.toFixed(2)}</td>
+      <td class="p-1 text-right">${item.quantity}</td>
+      <td class="p-1 text-right">₹${(item.discount || 0).toFixed(2)}</td>
+      <td class="p-1 text-right">₹${lineTotal.toFixed(2)}</td>
+    </tr>`;
+  });
+  itemsHTML += `</tbody></table>`;
 
-    const gross = price * qty;
-    const baseAmount = gross / (1 + gstRate / 100);
-    const gstAmount = gross - baseAmount;
-    const finalAmount = gross - discount;
-
-    totalAmount += finalAmount;
-    totalGST += gstAmount;
-    totalDiscount += discount;
-
-    return `
-      <div class="grid grid-cols-12 gap-1 text-xs py-0.5 border-b">
-        <div class="col-span-1">${index + 1}</div>
-        <div class="col-span-5">${item.name}</div>
-        <div class="col-span-1 text-right">₹${price.toFixed(2)}</div>
-        <div class="col-span-1 text-right">${gstRate}%</div>
-        <div class="col-span-1 text-right">₹${gstAmount.toFixed(2)}</div>
-        <div class="col-span-1 text-right">${qty}</div>
-        <div class="col-span-1 text-right">₹${discount.toFixed(2)}</div>
-        <div class="col-span-1 text-right">₹${finalAmount.toFixed(2)}</div>
-      </div>
-    `;
-  }).join("");
-
-  const headerRow = `
-    <div class="grid grid-cols-12 gap-1 text-xs font-medium bg-gray-100 py-0.5">
-      <div class="col-span-1">S.No</div>
-      <div class="col-span-5">Item</div>
-      <div class="col-span-1 text-right">Rate</div>
-      <div class="col-span-1 text-right">GST%</div>
-      <div class="col-span-1 text-right">GST Amt</div>
-      <div class="col-span-1 text-right">Qty</div>
-      <div class="col-span-1 text-right">Disc.</div>
-      <div class="col-span-1 text-right">Amt</div>
-    </div>
-  `;
-
-  if (invoiceItems) invoiceItems.innerHTML = headerRow + itemsHTML;
+  invoiceItems.innerHTML = customerInfoHTML + itemsHTML;
 
   // Totals
   const cgst = totalGST / 2;
@@ -1252,8 +1229,8 @@ async function renderView(viewName) {
   }
 
   if (viewName === "Sales") {
-    const salesViewCartElement = document.getElementById("fixed-cart-ui");
-    if (salesViewCartElement) salesViewCartElement.classList.remove("hidden");
+    const cart = document.getElementById("fixed-cart-ui");
+    if (cart) cart.classList.remove("hidden");
 
     if (!productsLoaded) {
         const salesProductList = document.getElementById('salesProductList');
@@ -1833,17 +1810,11 @@ async function renderCartOverlay() {
 const previewBtn = document.getElementById("previewInvoiceBtn");
 if (previewBtn) {
   previewBtn.onclick = () => {
-    try {
-      if (cart.length === 0) {
-        showToast("🛒 Cart is empty.");
-        return;
-      }
-      populateInvoiceModal([...cart], activeInvoiceNo || Date.now());
-      document.getElementById('invoice-modal').classList.remove('hidden');
-    } catch (err) {
-      console.error('Error rendering invoice preview:', err);
-      showToast("❌ Error generating preview.");
+    if (cart.length === 0) {
+      showToast("🛒 Cart is empty.");
+      return;
     }
+    populateInvoiceModal([...cart], activeInvoiceNo);
   };
 }
   // Attach Global Discount Button (after overlay renders)
@@ -2100,6 +2071,16 @@ window.addToCart = async function (id, name, price) {
   showToast(`🛒 ${name} added`);
   await updateCartUI();
   updateCartSummaryFooter();  // ✅ live recalc
+  const previewBtn = document.getElementById("previewInvoiceBtn");
+if (previewBtn) {
+  previewBtn.addEventListener("click", () => {
+    if (cart.length === 0) {
+      showToast("🛒 Cart is empty.");
+      return;
+    }
+    populateInvoiceModal([...cart]);
+  });
+}
 };
 window.updateCartItem = async function (id, field, value) {
   const item = cart.find(p => p.id === id);
@@ -2149,29 +2130,29 @@ window.updateCartItem = async function (id, field, value) {
     const productIdInput = document.getElementById("productProductId");
 
     editingProductId = id;
-    nameInput.value = product.name;
-    priceInput.value = product.price;
-    stockInput.value = product.stock;
-    hsnInput.value = product.hsn_code || "";
-    gstInput.value = product.gst_percent ?? "";
+    nameInput.value = name;
+    priceInput.value = price;
+    stockInput.value = stock;
+    hsnInput.value = hsn_code || "";
+    gstInput.value = gst_percent ?? "";
     
     // Handle category selection properly
-    if (product.category && categorySelect) {
+    if (category && categorySelect) {
       // Check if category exists in dropdown, if not add it
-      const categoryExists = Array.from(categorySelect.options).some(option => option.value === product.category);
-      if (!categoryExists && product.category) {
-        categorySelect.innerHTML += `<option value="${product.category}">${product.category}</option>`;
+      const categoryExists = Array.from(categorySelect.options).some(option => option.value === category);
+      if (!categoryExists && category) {
+        categorySelect.innerHTML += `<option value="${category}">${category}</option>`;
       }
-      categorySelect.value = product.category;
+      categorySelect.value = category;
       // Trigger change event to populate HSN/GST and sub-category
       categorySelect.dispatchEvent(new Event('change'));
     }
 
     // Populate sub-category dropdown for editing
-    if (product.category) {
+    if (category) {
       (async () => {
-        await updateProductModalSubCategoryDropdown(product.category);
-        subCategoryInput.value = product.sub_category || "";
+        await updateProductModalSubCategoryDropdown(category);
+        subCategoryInput.value = allProducts.find(p => p.id === id)?.sub_category || "";
       })();
     } else {
       subCategoryInput.innerHTML = `<option value="">Select Sub Category</option>`;
@@ -2179,12 +2160,12 @@ window.updateCartItem = async function (id, field, value) {
     }
     
     // Set other fields if they exist
-    if (brandInput) brandInput.value = product.brand || "";
-    if (modelNameInput) modelNameInput.value = product.model_name || "";
-    if (unitInput) unitInput.value = product.unit || "";
-    if (subCategoryInput) subCategoryInput.value = product.sub_category || "";
-    if (barcodeValueInput) barcodeValueInput.value = product.barcode_value || "";
-    if (productIdInput) productIdInput.value = product.product_id || "";
+    if (brandInput) brandInput.value = "";
+    if (modelNameInput) modelNameInput.value = "";
+    if (unitInput) unitInput.value = "";
+    if (subCategoryInput) subCategoryInput.value = "";
+    if (barcodeValueInput) barcodeValueInput.value = "";
+    if (productIdInput) productIdInput.value = "";
     
     modalTitle.textContent = "Edit Product";
     modal.classList.remove("hidden");
@@ -2305,7 +2286,7 @@ function applyGlobalDiscount(type, value) {
   }
 
   renderCartOverlay();  // ✅ triggers live update
-  // 🧾 Wire Preview Invoice button inside
+  // 🧾 Wire Preview Invoice button inside cart overlay
 }
 function showToast(message) {
   const toast = document.getElementById("toast");
@@ -2485,3 +2466,17 @@ async function populateInvoiceModal(items = [], invoiceNo = '0000') {
   if (modal) modal.classList.remove('hidden');
   await new Promise(resolve => requestAnimationFrame(resolve));
 }
+
+// Unified Preview Invoice button handler
+document.getElementById('previewInvoiceBtn').addEventListener('click', () => {
+    try {
+        if (typeof populateInvoiceModal === 'function') {
+            populateInvoiceModal(cart, generateInvoiceNumber ? generateInvoiceNumber() : Date.now());
+            document.getElementById('invoice-modal').classList.remove('hidden');
+        } else {
+            console.error('populateInvoiceModal() is not defined');
+        }
+    } catch (err) {
+        console.error('Error rendering invoice preview:', err);
+    }
+});

@@ -10,25 +10,29 @@
  * @returns {{product_id: string, barcode_value: string}}
  */
 function parsePriceFromModel(model_name = '') {
-  try {
-    const suffix = (model_name || '').split('-')[1];
-    if (!suffix) return null;
+  if (!model_name) return null;
+  model_name = model_name.trim();
 
-    const multiplierChar = suffix.slice(-1).toLowerCase();
-    const numericPart = parseFloat(suffix.slice(0, -1));
-
-    if (isNaN(numericPart)) return null;
-
-    const multipliers = { k: 1000, h: 100, t: 10 };
-    const multiplier = multipliers[multiplierChar];
-
-    if (multiplier) {
-      return numericPart * multiplier;
+  // Regex for formats like 2k, 1.5h, 10t (at the end of a word or string)
+  const multiplierRegex = /(\d+\.?\d*)\s?([kht])\b/i;
+  const multiplierMatch = model_name.match(multiplierRegex);
+  if (multiplierMatch && multiplierMatch[1] && multiplierMatch[2]) {
+    const value = parseFloat(multiplierMatch[1]);
+    const multiplier = multiplierMatch[2].toLowerCase();
+    const multipliers = { k: 1000, h: 200, t: 20 };
+    if (multipliers[multiplier]) {
+      return value * multipliers[multiplier];
     }
-    return null;
-  } catch (error) {
-    return null;
   }
+
+  // Regex for formats like ₹749, Rs.749, Rs 749
+  const currencyRegex = /(?:₹|Rs\.?)\s?(\d+\.?\d*)/;
+  const currencyMatch = model_name.match(currencyRegex);
+  if (currencyMatch && currencyMatch[1]) {
+    return parseFloat(currencyMatch[1]);
+  }
+
+  return null;
 }
 
 let barcodeCounter = 0;
@@ -257,8 +261,8 @@ function renderSalesPaginationControls(totalPages) {
         </table>
         <div id="productPaginationControls" class="flex justify-center items-center space-x-2 mt-4"></div>
 
-        <div id="productModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
-          <div class="bg-white p-6 rounded shadow-lg w-full max-w-md mx-auto">
+        <div id="productModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50" style="overflow-y: auto;">
+          <div class="bg-white p-6 rounded shadow-lg w-full max-w-md mx-auto my-8">
             <h2 class="text-lg font-semibold mb-4" id="modalTitle">Add Product</h2>
             <input type="text" id="productName" placeholder="Product Name" class="w-full mb-2 p-2 border border-secondary-light rounded focus:outline-none focus:ring-2 focus:ring-primary" />
             <div class="flex gap-2 mb-2">
@@ -633,7 +637,7 @@ async function setupInvoiceHistoryView() {
 window.viewInvoice = async function(id) {
   const invoice = await window.api.getInvoiceDetails(id);
   if (invoice) {
-    showInvoice(invoice.items, invoice.invoice_no);
+    populateInvoiceModal(invoice.items, invoice.invoice_no);
   }
 }
 
@@ -819,7 +823,44 @@ function setupProductView() {
   const unitInput = document.getElementById("productUnit");
   const barcodeValueInput = document.getElementById("productBarcodeValue");
 
-  
+  // ✅ START: FIX FOR ISSUE #1 and #2
+  function updateGeneratedIds() {
+    const tempProduct = {
+      name: nameInput.value,
+      category: categorySelect.value,
+      sub_category: subCategoryInput.value,
+      brand: brandInput.value,
+      model_name: modelNameInput.value,
+    };
+    const barcode = generateBarcode(tempProduct);
+    barcodeValueInput.value = barcode;
+    productIdInput.value = barcode;
+  }
+
+  const modalInputs = modal.querySelectorAll('input, select');
+  modalInputs.forEach(input => {
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        saveBtn.click();
+      }
+    });
+  });
+
+  [nameInput, brandInput, modelNameInput].forEach(input => {
+    input.addEventListener('input', updateGeneratedIds);
+  });
+  [categorySelect, subCategoryInput].forEach(select => {
+    select.addEventListener('change', updateGeneratedIds);
+  });
+
+  modelNameInput.addEventListener('input', () => {
+    const price = parsePriceFromModel(modelNameInput.value);
+    if (price !== null) {
+      priceInput.value = price;
+    }
+  });
+  // ✅ END: FIX FOR ISSUE #1 and #2
 
 
   if (categorySelect && hsnInput && gstInput) {
@@ -879,7 +920,11 @@ function setupProductView() {
     const brand = brandInput.value.trim();
     const model_name = modelNameInput.value.trim();
     const unit = unitInput.value.trim();
-    const barcode_value = generateBarcode(payload);
+    
+    // This is a slight bug in the original code. `payload` is not defined yet.
+    // It should generate the barcode from the collected constants.
+    const tempPayloadForBarcode = { name, category, sub_category, brand, model_name };
+    const barcode_value = generateBarcode(tempPayloadForBarcode);
 
     if (!name || isNaN(price) || isNaN(stock)) {
       showToast("⚠️ Please fill all fields correctly.");
@@ -893,12 +938,12 @@ function setupProductView() {
       category: category || null,
       hsn_code: hsn || null,
       gst_percent: isNaN(gst) ? null : gst,
-      product_id: product_id || null,
+      product_id: product_id || barcode_value, // Fallback to barcode_value if product_id is empty
       sub_category: sub_category || null,
       brand: brand || null,
       model_name: model_name || null,
       unit: unit || null,
-      barcode_value: barcode_value || null
+      barcode_value: barcode_value
     };
 
     let result;
@@ -912,6 +957,7 @@ function setupProductView() {
     if (result.success) {
       showToast(editingProductId ? "✏️ Product updated!" : "✅ Product added!");
       modal.classList.add("hidden");
+      if (fixedCart) fixedCart.style.display = "block";
       renderProducts();
     } else {
       showToast("❌ Failed to save product.");
@@ -1055,6 +1101,97 @@ async function updateProductModalSubCategoryDropdown(category) {
 }
 
 
+async function populateInvoiceModal(cartItems, invoiceNo) {
+  const storeSettings = await window.api.getStoreSettings();
+  const invoiceHeader = document.getElementById('invoice-header');
+  const invoiceMeta = document.getElementById('invoice-meta');
+  const invoiceItems = document.getElementById('invoice-items');
+  const invoiceTotal = document.getElementById('invoice-total');
+
+  // Store Header
+  let headerHTML = `
+    <div class="text-center mb-1">
+      <div class="text-lg font-bold">${storeSettings?.store_name || "Asian Sports"}</div>
+      <div class="text-sm">No. 1 Store for All Your Sporting&nbsp;needs</div>
+      <div class="border-t border-b my-1 py-0.5 text-sm font-semibold">TAX INVOICE</div>
+    </div>
+    <div class="text-xs leading-tight mt-1 text-left">
+      ${storeSettings?.store_address || "Yellandu Cross Road, IT Hub Circle"}<br>
+      ${storeSettings?.store_city || "Khammam-507001"}
+      <div class="mt-1">📞 ${storeSettings?.store_phone || "9985624684"}</div>
+      <div class="border-t my-1"></div>
+      ${storeSettings?.store_gstin ? `<div>GSTIN: ${storeSettings.store_gstin}</div>` : "GSTIN: 07ABCDE1234F2Z5"}
+    </div>`;
+  invoiceHeader.innerHTML = headerHTML;
+
+  // Meta (Invoice No, Date)
+  const now = new Date();
+  invoiceMeta.textContent = `Invoice: ${invoiceNo} | Date: ${now.toLocaleDateString()} ${now.toLocaleTimeString()}`;
+
+  // Customer info
+  const custName = document.getElementById('custName')?.value || "";
+  const custPhone = document.getElementById('custPhone')?.value || "";
+  let customerInfoHTML = "";
+  if (custName) customerInfoHTML += `<div class="text-sm font-semibold mt-1">${custName}</div>`;
+  if (custPhone) customerInfoHTML += `<div class="text-sm">${custPhone}</div>`;
+
+  // Items table
+  let itemsHTML = `<table class="w-full text-xs border-collapse">
+    <thead>
+      <tr class="border-b border-dotted border-gray-400 text-left">
+        <th class="p-1">S.No</th>
+        <th class="p-1">Item</th>
+        <th class="p-1 text-right">Rate</th>
+        <th class="p-1 text-right">GST%</th>
+        <th class="p-1 text-right">GST Amt</th>
+        <th class="p-1 text-right">Qty</th>
+        <th class="p-1 text-right">Disc.</th>
+        <th class="p-1 text-right">Amount</th>
+      </tr>
+    </thead>
+    <tbody>`;
+
+  let totalGST = 0;
+  let totalAmount = 0;
+  let totalDiscount = 0;
+  cartItems.forEach((item, idx) => {
+    const gstAmt = (item.price * item.gst_percent / (100 + item.gst_percent)) * item.quantity;
+    const lineTotal = item.price * item.quantity - (item.discount || 0);
+    totalGST += gstAmt;
+    totalAmount += lineTotal;
+    totalDiscount += (item.discount || 0);
+    itemsHTML += `<tr class="border-b border-dotted border-gray-300">
+      <td class="p-1">${idx + 1}</td>
+      <td class="p-1">${item.name}</td>
+      <td class="p-1 text-right">₹${item.price.toFixed(2)}</td>
+      <td class="p-1 text-right">${item.gst_percent}%</td>
+      <td class="p-1 text-right">₹${gstAmt.toFixed(2)}</td>
+      <td class="p-1 text-right">${item.quantity}</td>
+      <td class="p-1 text-right">₹${(item.discount || 0).toFixed(2)}</td>
+      <td class="p-1 text-right">₹${lineTotal.toFixed(2)}</td>
+    </tr>`;
+  });
+  itemsHTML += `</tbody></table>`;
+
+  invoiceItems.innerHTML = customerInfoHTML + itemsHTML;
+
+  // Totals
+  const cgst = totalGST / 2;
+  const sgst = totalGST / 2;
+  const grandTotal = totalAmount;
+  const payable = grandTotal;
+
+  invoiceTotal.innerHTML = `
+    <div class="text-sm mt-3 border-t pt-2 text-right">
+      <div>Total GST: ₹${totalGST.toFixed(2)}</div>
+      <div>CGST + SGST: ₹${cgst.toFixed(2)} + ₹${sgst.toFixed(2)}</div>
+      <div>Total Amount: ₹${(grandTotal + totalDiscount).toFixed(2)}</div>
+      <div class="text-red-600">Discount: − ₹${totalDiscount.toFixed(2)}</div>
+      <div class="text-lg font-bold mt-1">Payable: ₹${payable.toFixed(2)}</div>
+      <div class="text-center mt-4 font-medium"> Thank you! Visit again.</div>
+    </div>`;
+}
+
 async function renderView(viewName) {
   currentTab = viewName; // Update currentTab on view change
   app.innerHTML = views[viewName] || `<p>Unknown view: ${viewName}</p>`;
@@ -1170,11 +1307,13 @@ async function renderView(viewName) {
     const checkoutBtn = document.querySelector("#fixed-cart-ui #checkoutBtn");
     if (checkoutBtn) {
       // 🛒 Step 2C — Show Cart Overlay on button click
-      checkoutBtn.addEventListener("click", async () => {
+      checkoutBtn.addEventListener("click", () => {
         const cartOverlay = document.getElementById("cartOverlay");
         if (cartOverlay) {
           cartOverlay.classList.remove("hidden");
-          await renderCartOverlay(); // Await the async function call
+          renderCartOverlay();
+        } else {
+          completeSaleAndPrint();
         }
       });
     }
@@ -1575,98 +1714,97 @@ async function renderCartOverlay() {
   // ✅ Call footer update here
   updateCartSummaryFooter();
 
+  // Minimal function definition for post-print cleanup
+  function doPostPrintCleanup(result) {
+      console.log("Post print cleanup done.", result);
+  }
+
+  async function completeSaleAndPrint() {
+  console.log('Renderer: Before print call.');
+  const invoiceModalEl = document.getElementById('invoice-modal');
+  
+  // First, save the sale and get the final invoice details
+  const customerName = document.getElementById("customerName")?.value || "";
+  const customerPhone = document.getElementById("customerPhone")?.value || "";
+  const gstin = document.getElementById("custGSTIN")?.value?.trim() || null;
+  const invoiceNo = document.getElementById("customerInvoiceNo")?.value || generateInvoiceNumber();
+  const paymentMethod = document.getElementById("paymentMode")?.value?.trim() || "Cash";
+
+  if (!invoiceNo || cart.length === 0) {
+    showToast(cart.length === 0 ? "🛒 Cart is empty." : "⚠️ Invoice number missing.");
+    return;
+  }
+
+  const itemsWithAmount = cart.map(item => {
+    const product = allProducts.find(p => p.id === item.id);
+    const rate = item.price ?? 0;
+    const qty = item.quantity ?? 1;
+    const gst = item.gst_percent ?? product?.gst_percent ?? 0;
+    const discount = item.discount ?? 0;
+    const totalMRP = rate * qty;
+    const gstFraction = gst / (100 + gst);
+    const gstAmount = totalMRP * gstFraction;
+    const base = totalMRP - gstAmount;
+    const discountedBase = base - discount;
+    const finalAmount = discountedBase + gstAmount;
+    return { ...item, product_id: product?.product_id || null, final_amount: parseFloat(finalAmount.toFixed(2)) };
+  });
+
+  const salePayload = {
+    invoice_no: activeInvoiceNo,
+    timestamp: new Date().toISOString(),
+    customer_name: customerName,
+    customer_phone: customerPhone,
+    customer_gstin: gstin,
+    payment_method: paymentMethod,
+    items: itemsWithAmount
+  };
+
+  const result = await window.api.saveSale(salePayload);
+  if (!result?.success) {
+    showToast("❌ Failed to save sale.");
+    return;
+  }
+  
+  // Now that sale is saved, render the invoice for printing
+  const clonedCart = structuredClone(itemsWithAmount);
+  await populateInvoiceModal(clonedCart, result.invoice_no);
+
+  // Clone the invoice modal to avoid altering the visible one
+  if (!invoiceModalEl) {
+    showToast("Error: Invoice modal not found.");
+    // Call doPostPrintCleanup here if the modal is not found, to ensure cleanup happens
+    doPostPrintCleanup(result);
+    return;
+  }
+  invoiceModalEl.classList.remove("hidden");
+
+  const printMode = "thermal-80";
+  const invoiceClone = invoiceModalEl.cloneNode(true);
+  
+
+  const printHtml = invoiceModalEl.outerHTML;
+
+  try {
+    if (window.api && typeof window.api.printInvoice === "function") {
+      await window.api.printInvoice({ html: printHtml, mode: printMode });
+    } else {
+      console.error("printInvoice function is not available");
+      showToast("❌ Printing service not available.");
+    }
+  } catch (err) {
+    console.error("Printing failed:", err);
+    showToast("🖨️ Print failed. Check printer connection.");
+  } finally {
+    // This now correctly runs after the print job is sent.
+    doPostPrintCleanup(result);
+  }
+}
+
   const confirmBtn = document.getElementById("cartCheckoutBtn");
   if (confirmBtn) {
 	  confirmBtn.disabled = false; // 👈 this is what’s missing!
-    confirmBtn.onclick = async () => {
-        const invoiceNo = document.getElementById("customerInvoiceNo")?.value?.trim() || "N/A";
-        const custName = document.getElementById("custName")?.value?.trim() || "—";
-        const custPhone = document.getElementById("custPhone")?.value?.trim() || "—";
-
-      const name = document.getElementById("custName")?.value?.trim() || null;
-      const phone = document.getElementById("custPhone")?.value?.trim() || null;
-      const gstin = document.getElementById("custGSTIN")?.value?.trim() || null;
-
-      if (!invoiceNo) {
-        showToast("⚠️ Invoice number missing.");
-        return;
-      }
-
-      if (cart.length === 0) {
-        showToast("🛒 Cart is empty.");
-        return;
-      }
-
-      const itemsWithAmount = cart.map(item => {
-        const product = allProducts.find(p => p.id === item.id); // Find the product here
-        const rate = item.price ?? 0;
-        const qty = item.quantity ?? 1;
-        const gst = item.gst_percent ?? product?.gst_percent ?? 0; // Use optional chaining for product
-        const discount = item.discount ?? 0;
-
-        const totalMRP = rate * qty;
-        const gstFraction = gst / (100 + gst);
-        const gstAmount = totalMRP * gstFraction;
-        const base = totalMRP - gstAmount;
-        const discountedBase = base - discount;
-        const finalAmount = discountedBase + gstAmount;
-
-        return {
-          ...item,
-          product_id: product?.product_id || null, // Pass the generated product_id string
-          final_amount: parseFloat(finalAmount.toFixed(2)),
-        };
-      });
-const paymentMethod = document.getElementById("paymentMode")?.value?.trim() || "Cash";
-const salePayload = {
-  invoice_no: activeInvoiceNo, // Use the stored activeInvoiceNo
-  timestamp: new Date().toISOString(),
-  customer_name: name,
-  customer_phone: phone,
-  customer_gstin: gstin,
-  payment_method: paymentMethod, // ✅ now included
-  items: itemsWithAmount
-};
-
-
-try {
-  const result = await window.api.saveSale(salePayload);
-  console.log("🧾 Final Invoice No used:", result.invoice_no); // Debug log
-
-  if (result?.success) {
-    const invoiceNo = result.invoice_no;
-
-    // ✅ Inject confirmed invoice number into DOM first
-    const invoiceInput = document.getElementById("customerInvoiceNo");
-    if (invoiceInput && invoiceNo) {
-      invoiceInput.value = invoiceNo;
-    }
-
-    const clonedCart = structuredClone(itemsWithAmount); // ✅ Clone after DOM is updated
-    showInvoice(clonedCart, invoiceNo); // ✅ Now pulls correct invoice number
-
-    showToast("✅ Sale saved!");
-    cart.length = 0;
-    updateCartUI();
-    document.getElementById("cartOverlay").classList.add("hidden");
-    activeInvoiceNo = null; // Clear activeInvoiceNo after successful sale
-
-    // ✅ Save serial part for preview
-    if (invoiceNo.length >= 15) {
-      const prefix = invoiceNo.slice(3, 11);
-      const serial = parseInt(invoiceNo.slice(-4));
-      if (!isNaN(serial)) {
-        localStorage.setItem(`lastInvoiceNumber_inv${prefix}`, serial);
-      }
-    }
-  } else {
-    showToast("❌ Failed to save sale.");
-  }
-} catch (err) {
-  console.error("❌ saveSale error:", err);
-  showToast("⚠️ Could not save. Try again.");
-}
-    };
+    confirmBtn.onclick = completeSaleAndPrint;
   }
 // ✅ Wire Preview Invoice button ONCE when overlay is rendered
 const previewBtn = document.getElementById("previewInvoiceBtn");
@@ -1676,7 +1814,7 @@ if (previewBtn) {
       showToast("🛒 Cart is empty.");
       return;
     }
-    showInvoice([...cart], activeInvoiceNo);
+    populateInvoiceModal([...cart], activeInvoiceNo);
   };
 }
   // Attach Global Discount Button (after overlay renders)
@@ -1940,7 +2078,7 @@ if (previewBtn) {
       showToast("🛒 Cart is empty.");
       return;
     }
-    showInvoice([...cart]);
+    populateInvoiceModal([...cart]);
   });
 }
 };
@@ -2126,135 +2264,6 @@ document.querySelectorAll(".nav-btn").forEach((btn) => {
 document.getElementById("close-invoice-btn").addEventListener("click", () => {
   document.getElementById("invoice-modal").classList.add("hidden");
 });
-function showInvoice(items, invoiceNo) {
-  renderInvoice(items, invoiceNo);
-  const modal = document.getElementById("invoice-modal");
-  if (modal) {
-    modal.classList.remove("hidden");
-  } else {
-    console.warn("❗ Invoice modal not found in DOM.");
-  }
-}
-async function renderInvoice(items, invoiceNo) {
-  const invoiceItemsDiv = document.getElementById("invoice-items");
-  const invoiceTotalP = document.getElementById("invoice-total");
-  const invoiceMeta = document.getElementById("invoice-meta");
-  const printMode = document.getElementById("print-mode")?.value || "thermal";
-  document.body.classList.remove("print-thermal", "print-a4");
-  document.body.classList.add(`print-${printMode}`);
-
-  const canvas = document.getElementById("invoice-barcode");
-
-  invoiceItemsDiv.innerHTML = "";
-  const invoiceHeader = document.getElementById("invoice-header");
-const settings = await window.api.getStoreSettings();
-if (invoiceHeader && settings) {
-invoiceHeader.innerHTML = `
-  <div class="text-center mb-1">
-    <div class="text-lg font-bold">${settings.store_name || "Your Store"}</div>
-    ${settings.store_subtitle ? `<div class="text-sm">${settings.store_subtitle}</div>` : ""}
-    <div class="border-t border-b my-1 py-0.5 text-sm font-semibold">TAX INVOICE</div>
-  </div>
-
-  <div class="text-xs leading-tight mt-1 text-left">
-    ${settings.store_address ? settings.store_address.split(",").slice(0, -1).join(",") : ""}<br>
-    ${settings.store_address ? settings.store_address.split(",").slice(-1)[0] : ""}
-    ${settings.store_phone ? `<div class="mt-1">📞 ${settings.store_phone}</div>` : ""}
-    <div class="border-t my-1"></div>
-
-${settings.store_gstin ? `
-  <div>
-    <div>GSTIN: ${settings.store_gstin}</div>
-  </div>
-` : ""}
-  </div>
-`;
-}
-  let subtotal = 0;
-  let totalGST = 0;
-
-  const hsnSummary = {};
-  const showTaxable = localStorage.getItem("showTaxable") === "true"; // Will later come from settings
-
-let tableHTML = `
-  <table class="w-full text-xs border-collapse">
-    <thead>
-      <tr class="border-b border-dotted border-gray-400 text-left">
-        <th class="p-1">S.No</th>
-        <th class="p-1">Item</th>
-        <th class="p-1 text-right">Rate</th>
-        <th class="p-1 text-right">GST%</th>
-        <th class="p-1 text-right">GST Amt</th>
-        <th class="p-1 text-right">Qty</th>
-        <th class="p-1 text-right">Disc.</th>
-        <th class="p-1 text-right">Amount</th>
-      </tr>
-    </thead>
-    <tbody>
-`;
-
-items.forEach((item, index) => {
-  const qty = item.quantity;
-  const price = item.price;
-  const gstRate = item.gst_percent || 0;
-  const hsn = item.hsn_code || "N/A";
-  const discount = item.discount ?? 0;
-
-  const gross = price * qty;
-  const finalAmount = +(gross - discount).toFixed(2);
-  const baseAmount = +(finalAmount / (1 + gstRate / 100)).toFixed(2);
-  const gstAmount = +(finalAmount - baseAmount).toFixed(2);
-  const cgst = +(gstAmount / 2).toFixed(2);
-  const sgst = +(gstAmount / 2).toFixed(2);
-
-  subtotal += baseAmount;
-  totalGST += gstAmount;
-
-  if (!hsnSummary[hsn]) {
-    hsnSummary[hsn] = { taxable: 0, gst: 0, rate: gstRate };
-  }
-  hsnSummary[hsn].taxable += baseAmount;
-  hsnSummary[hsn].gst += gstAmount;
-
-  tableHTML += `
-      <tr class="border-b border-dotted border-gray-300">
-        <td class="p-1">${index + 1}</td>
-        <td class="p-1">${item.name}</td>
-        <td class="p-1 text-right">₹${price.toFixed(2)}</td>
-        <td class="p-1 text-right">${gstRate}%</td>
-        <td class="p-1 text-right">₹${gstAmount.toFixed(2)}</td>
-        <td class="p-1 text-right">${qty}</td>
-        <td class="p-1 text-right">₹${discount.toFixed(2)}</td>
-        <td class="p-1 text-right">₹${finalAmount.toFixed(2)}</td>
-      </tr>
-    `;
-  });
-
-  tableHTML += `
-      </tbody>
-    </table>
-  `;
-
-  invoiceItemsDiv.innerHTML = tableHTML;
-
-  const totalAmount = subtotal + totalGST;
-  const cgstTotal = +(totalGST / 2).toFixed(2);
-  const sgstTotal = +(totalGST / 2).toFixed(2);
-
-  const grossTotal = items.reduce((sum, item) => sum + (item.price || 0) * (item.quantity || 1), 0);
-  const totalDiscount = grossTotal - (subtotal + totalGST);
-
-  invoiceTotalP.innerHTML = `
-    <div class="text-sm mt-3 border-t pt-2 text-right">
-      <div>Total GST: ₹${totalGST.toFixed(2)}</div>
-      <div>CGST + SGST: ₹${cgstTotal.toFixed(2)} + ₹${sgstTotal.toFixed(2)}</div>
-      <div>Total Amount: ₹${(subtotal + totalGST).toFixed(2)}</div>
-      <div class="text-red-600">Discount: − ₹${totalDiscount.toFixed(2)}</div>
-      <div class="text-lg font-bold mt-1">Payable: ₹${(subtotal + totalGST).toFixed(2)}</div>
-    <div class="text-center mt-4 font-medium"> Thank you! Visit again.</div>
-    </div>
-  `;
-  } // ✅ Closing renderInvoice()
 function applyGlobalDiscount(type, value) {
   if (!cart.length) return;
 
@@ -2318,4 +2327,142 @@ if (!window.deleteProduct) {
       }
     }
   };
+}
+
+// Unified invoice population for both preview and checkout
+async function populateInvoiceModal(items = [], invoiceNo = '0000') {
+  const invoiceHeaderEl = document.getElementById('invoice-header');
+  const invoiceMetaEl = document.getElementById('invoice-meta');
+  const invoiceItemsEl = document.getElementById('invoice-items');
+  const invoiceTotalEl = document.getElementById('invoice-total');
+
+  const settings = await (window.api && window.api.getStoreSettings ? window.api.getStoreSettings() : Promise.resolve(null));
+
+  if (invoiceHeaderEl && settings) {
+    const storeName = settings.store_name || 'Your Store';
+    const subtitle = settings.store_subtitle ? `<div class="text-sm">${settings.store_subtitle}</div>` : '';
+    const addr = settings.store_address ? settings.store_address.split(',').map(s => s.trim()) : [];
+    const addrTop = addr.slice(0, -1).join(', ');
+    const addrLast = addr.length ? addr.slice(-1)[0] : '';
+    const phoneLine = settings.store_phone ? `<div class="mt-1">📞 ${settings.store_phone}</div>` : '';
+    const gstLine = settings.store_gstin ? `<div>GSTIN: ${settings.store_gstin}</div>` : '';
+
+    invoiceHeaderEl.innerHTML = `
+      <div class="text-center mb-1">
+        <div class="text-lg font-bold">${storeName}</div>
+        ${subtitle}
+        <div class="border-t border-b my-1 py-0.5 text-sm font-semibold">TAX INVOICE</div>
+      </div>
+      <div class="text-xs leading-tight mt-1 text-left">
+        ${addrTop ? `${addrTop}<br>` : ''}
+        ${addrLast ? `${addrLast}<br>` : ''}
+        ${phoneLine}
+        <div class="border-t my-1"></div>
+        ${gstLine}
+      </div>
+    `;
+  } else if (invoiceHeaderEl) {
+    invoiceHeaderEl.innerHTML = `<div class="text-lg font-bold">Your Store</div>`;
+  }
+
+  if (invoiceMetaEl) {
+    const now = new Date();
+    invoiceMetaEl.textContent = `INV${invoiceNo} | Date: ${now.toLocaleDateString()} ${now.toLocaleTimeString()}`;
+  }
+
+  const customerNameEl = document.getElementById('invoice-customer-name');
+  const customerPhoneEl = document.getElementById('invoice-customer-phone');
+  if (customerNameEl) {
+    const nameVal = document.getElementById('customerName')?.value || '';
+    customerNameEl.textContent = nameVal;
+  }
+  if (customerPhoneEl) {
+    const phoneVal = document.getElementById('customerPhone')?.value || '';
+    customerPhoneEl.textContent = phoneVal;
+  }
+
+  if (!invoiceItemsEl) return;
+
+  invoiceItemsEl.innerHTML = '';
+
+  let serial = 0;
+  let grossBaseSum = 0;
+  let totalGST = 0;
+  let totalDiscount = 0;
+  const rows = items.map(item => {
+    serial++;
+    const product = allProducts.find(p => p.id === item.id) || {};
+    const rate = +(item.price || 0);
+    const qty = +(item.quantity || 1);
+    const gst = +((item.gst_percent !== undefined && item.gst_percent !== null) ? item.gst_percent : (product.gst_percent || 0));
+    const discount = +(item.discount || 0);
+
+    const totalMRP = rate * qty;
+    const gstFraction = gst / (100 + gst);
+    const gstAmount = +(totalMRP * gstFraction);
+    const base = totalMRP - gstAmount;
+    const discountedBase = base - discount;
+    const finalAmount = +(discountedBase + gstAmount);
+
+    grossBaseSum += base;
+    totalGST += gstAmount;
+    totalDiscount += discount;
+
+    const rateFmt = `₹${rate.toFixed(2)}`;
+    const gstPctFmt = `${gst}%`;
+    const gstAmtFmt = `₹${gstAmount.toFixed(2)}`;
+    const qtyFmt = `${qty}`;
+    const discFmt = `₹${discount.toFixed(2)}`;
+    const amountFmt = `₹${finalAmount.toFixed(2)}`;
+
+    return `
+      <div class="grid grid-cols-12 gap-2 border-b py-1">
+        <div class="col-span-1 text-sm">${serial}</div>
+        <div class="col-span-5 text-sm">${item.name}</div>
+        <div class="col-span-1 text-right text-sm">${rateFmt}</div>
+        <div class="col-span-1 text-right text-sm">${gstPctFmt}</div>
+        <div class="col-span-1 text-right text-sm">${gstAmtFmt}</div>
+        <div class="col-span-1 text-right text-sm">${qtyFmt}</div>
+        <div class="col-span-1 text-right text-sm">${discFmt}</div>
+        <div class="col-span-2 text-right text-sm">${amountFmt}</div>
+      </div>
+    `;
+  });
+
+  const headerRow = `
+    <div class="grid grid-cols-12 gap-2 font-semibold bg-gray-100 p-1 text-xs">
+      <div class="col-span-1">S.No</div>
+      <div class="col-span-5">Item</div>
+      <div class="col-span-1 text-right">Rate</div>
+      <div class="col-span-1 text-right">GST%</div>
+      <div class="col-span-1 text-right">GST Amt</div>
+      <div class="col-span-1 text-right">Qty</div>
+      <div class="col-span-1 text-right">Disc.</div>
+      <div class="col-span-2 text-right">Amount</div>
+    </div>
+  `;
+
+  invoiceItemsEl.innerHTML = headerRow + rows.join('');
+
+  const totalAmountBeforeDiscount = grossBaseSum + totalGST;
+  const cgst = +(totalGST / 2);
+  const sgst = +(totalGST / 2);
+  const payable = +(totalAmountBeforeDiscount - totalDiscount);
+
+  if (invoiceTotalEl) {
+    invoiceTotalEl.innerHTML = `
+      <div class="space-y-1 text-sm">
+        <div class="flex justify-between"><span class="font-medium">Total GST:</span> <span>₹${totalGST.toFixed(2)}</span></div>
+        <div class="flex justify-between"><span class="font-medium">CGST + SGST:</span> <span>₹${cgst.toFixed(2)} + ₹${sgst.toFixed(2)}</span></div>
+        <div class="flex justify-between"><span class="font-medium">Total Amount:</span> <span>₹${totalAmountBeforeDiscount.toFixed(2)}</span></div>
+        <div class="flex justify-between"><span class="font-medium">Discount:</span> <span>- ₹${totalDiscount.toFixed(2)}</span></div>
+        <div class="flex justify-between font-bold text-xl"><span>Payable:</span> <span>₹${payable.toFixed(2)}</span></div>
+      </div>
+      <div class="mt-3 text-sm">Thank you! Visit again.</div>
+    `;
+  }
+
+  const modal = document.getElementById('invoice-modal');
+  if (modal) modal.classList.remove('hidden');
+  await new Promise(resolve => requestAnimationFrame(resolve));
 }

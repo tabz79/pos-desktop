@@ -401,7 +401,7 @@ app.whenReady().then(async () => {
       modifiedHtml = modifiedHtml.replace(/<\/head>/, `${cssToInject}</head>`);
 
       // Add print mode class to body
-      modifiedHtml = modifiedHtml.replace(/<body/, `<body class="print-${mode}"`);
+      modifiedHtml = modifiedHtml.replace(/<body/, `<body class="print-${mode}">`);
 
       try {
         fs.writeFileSync(filePath, modifiedHtml);
