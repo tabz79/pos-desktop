@@ -35,9 +35,9 @@ contextBridge.exposeInMainWorld('api', {
   regenerateBarcodes: () => ipcRenderer.invoke('regenerate-barcodes'),
   getProductById: (id) => ipcRenderer.invoke('get-product-by-id', id),
   printLabel: (options) => ipcRenderer.invoke('print-label', options),
-  printInvoice: (html) => {
-    console.log('Preload: Crossing context bridge for printInvoice.');
-    return ipcRenderer.invoke('print-invoice', html);
+  printInvoice: (data) => {
+    console.log('Preload: Sending print-invoice via ipcRenderer.send.');
+    ipcRenderer.send('print-invoice', data);
   },
   // ...leave other api functions untouched
 });

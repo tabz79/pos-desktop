@@ -11,6 +11,8 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@node-escpos/core": "^0.6.0",
+    "@node-escpos/usb-adapter": "^0.3.1",
     "better-sqlite3": "^11.10.0",
     "bwip-js": "^4.7.0"
   },

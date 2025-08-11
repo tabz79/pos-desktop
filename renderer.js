@@ -1744,7 +1744,6 @@ async function renderCartOverlay() {
 
   async function completeSaleAndPrint() {
   console.log('Renderer: Before print call.');
-  const invoiceModalEl = document.getElementById('invoice-modal');
   
   // First, save the sale and get the final invoice details
   const customerName = document.getElementById("customerName")?.value || "";
@@ -1770,7 +1769,7 @@ async function renderCartOverlay() {
     const base = totalMRP - gstAmount;
     const discountedBase = base - discount;
     const finalAmount = discountedBase + gstAmount;
-    return { ...item, product_id: product?.product_id || null, final_amount: parseFloat(finalAmount.toFixed(2)) };
+    return { ...item, product_id: product?.product_id || null, final_amount: parseFloat(finalAmount.toFixed(2)), gst_percent: gst, discount: discount };
   });
 
   const salePayload = {
@@ -1789,28 +1788,65 @@ async function renderCartOverlay() {
     return;
   }
   
-  // Now that sale is saved, render the invoice for printing
-  const clonedCart = structuredClone(itemsWithAmount);
-  await populateInvoiceModal(clonedCart, result.invoice_no);
+  // Now that sale is saved, gather data for printing
+  const storeInfo = await window.api.getStoreSettings();
+  const now = new Date();
 
-  // Clone the invoice modal to avoid altering the visible one
-  if (!invoiceModalEl) {
-    showToast("Error: Invoice modal not found.");
-    // Call doPostPrintCleanup here if the modal is not found, to ensure cleanup happens
-    doPostPrintCleanup(result);
-    return;
-  }
-  invoiceModalEl.classList.remove("hidden");
+  let totalAmount = 0;
+  let totalGST = 0;
+  let totalDiscount = 0;
 
-  const printMode = "thermal-80";
-  const invoiceClone = invoiceModalEl.cloneNode(true);
-  
+  itemsWithAmount.forEach(item => {
+    const product = allProducts.find(p => p.id === item.id) || {};
+    const gstRate = item.gst_percent || product.gst_percent || 0;
+    const qty = item.quantity || 1;
+    const price = item.price || 0;
+    const discount = item.discount || 0;
 
-  const printHtml = invoiceModalEl.outerHTML;
+    const gross = price * qty;
+    const baseAmount = gross / (1 + gstRate / 100);
+    const gstAmount = gross - baseAmount;
+    const finalAmount = gross - discount;
+
+    totalAmount += finalAmount;
+    totalGST += gstAmount;
+    totalDiscount += discount;
+  });
+
+  const cgst = totalGST / 2;
+  const sgst = totalGST / 2;
+  const grandTotal = totalAmount;
+  const payable = grandTotal;
+
+  const invoiceMeta = {
+    invoice_no: result.invoice_no,
+    date: now.toLocaleDateString(),
+    time: now.toLocaleTimeString(),
+    payment_method: paymentMethod,
+    customer_name: customerName,
+    customer_phone: customerPhone,
+    customer_gstin: gstin
+  };
+
+  const totals = {
+    total_gst: totalGST,
+    cgst: cgst,
+    sgst: sgst,
+    total_amount: grandTotal + totalDiscount, // This is the pre-discount total
+    discount: totalDiscount,
+    payable: payable
+  };
+
+  const invoiceData = {
+    store: storeInfo,
+    meta: invoiceMeta,
+    items: itemsWithAmount,
+    totals: totals
+  };
 
   try {
     if (window.api && typeof window.api.printInvoice === "function") {
-      await window.api.printInvoice({ html: printHtml, mode: printMode });
+      await window.api.printInvoice(invoiceData);
     } else {
       console.error("printInvoice function is not available");
       showToast("❌ Printing service not available.");

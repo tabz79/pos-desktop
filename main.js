@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { printInvoice } = require('./printer');
 
 let tailwindCssContent;
 try {
@@ -384,121 +385,9 @@ app.whenReady().then(async () => {
     });
 
     // --- PATCHED print-invoice handler ---
-    ipcMain.handle('print-invoice', async (event, { html, mode }) => {
-      console.log('Main: Received print-invoice IPC call.');
-      const tempDir = app.getPath('temp');
-      const filePath = path.join(tempDir, `invoice-${Date.now()}.html`);
-
-      // --- Step 1: Inject CSS and add body class based on mode ---
-      let modifiedHtml = html;
-      const cssToInject = `
-        <style>
-          ${tailwindCssContent}
-        </style>
-      `;
-      // Remove existing link to output.css and inject inline styles
-      modifiedHtml = modifiedHtml.replace(/<link rel="stylesheet" href="\.\/styles\/output\.css">/, '');
-      modifiedHtml = modifiedHtml.replace(/<\/head>/, `${cssToInject}</head>`);
-
-      // Add print mode class to body
-      modifiedHtml = modifiedHtml.replace(/<body/, `<body class="print-${mode}">`);
-
-      try {
-        fs.writeFileSync(filePath, modifiedHtml);
-        console.log(`Main: Temporary HTML file created at ${filePath}`);
-
-        const printWindow = new BrowserWindow({ show: false });
-        printWindow.loadURL(`file://${filePath}`);
-
-        // Wrap event into a Promise to await completion
-        await new Promise((resolve, reject) => {
-          printWindow.webContents.once('did-finish-load', async () => {
-            try {
-              console.log('Main: printWindow content did-finish-load.');
-              // Give a short delay for rendering/painting
-              await new Promise(res => setTimeout(res, 500));
-
-              let printers = [];
-              let targetPrinter = undefined;
-              const preferredThermalPrinterName = "POS-80-Series";
-
-              try {
-                if (mainWindow && mainWindow.webContents) {
-                  printers = await mainWindow.webContents.getPrintersAsync();
-                  console.log('Main: Available printers:', printers.map(p => p.name));
-
-                  targetPrinter = printers.find(p => p.name === preferredThermalPrinterName);
-
-                  if (!targetPrinter) {
-                    targetPrinter = printers.find(p =>
-                      p.name.toLowerCase().includes('pos-80') || p.name.toLowerCase().includes('thermal')
-                    );
-                    if (targetPrinter) {
-                      console.log(`Main: Found thermal printer by partial match: ${targetPrinter.name}`);
-                    }
-                  }
-
-                  if (!targetPrinter) {
-                    console.warn(`Main: Thermal printer (exact match "${preferredThermalPrinterName}", or partial match "pos-80"/"thermal") not found. Printing to default system printer.`);
-                  }
-                } else {
-                  console.warn('Main: mainWindow or its webContents not available to fetch printers. Printing to default system printer.');
-                }
-              } catch (printerError) {
-                console.error('Main: Error fetching or selecting printer:', printerError);
-                targetPrinter = undefined;
-              }
-
-              let printOptions = {
-                silent: true,
-                printBackground: true,
-                deviceName: targetPrinter ? targetPrinter.name : undefined,
-              };
-
-              try {
-                console.log('Main: Attempting silent print...');
-                await printWindow.webContents.print(printOptions);
-                console.log('Main: Silent print command sent successfully.');
-              } catch (silentError) {
-                console.error('Main: Silent print failed:', silentError);
-                console.log('Main: Falling back to non-silent print...');
-                printOptions.silent = false;
-                try {
-                  await printWindow.webContents.print(printOptions);
-                  console.log('Main: Non-silent print command sent successfully.');
-                } catch (nonSilentError) {
-                  console.error('Main: Non-silent print also failed:', nonSilentError);
-                }
-              }
-
-              // Delay before closing to ensure job is sent
-              await new Promise(res => setTimeout(res, 2000));
-
-              printWindow.close();
-
-              if (fs.existsSync(filePath)) {
-                fs.unlinkSync(filePath);
-                console.log('Main: Temporary HTML file deleted.');
-              }
-
-              resolve({ success: true });
-            } catch (innerErr) {
-              reject(innerErr);
-            }
-          });
-
-          // Handle possible load failures or timeouts here if needed
-        });
-
-        // Return success once printing done
-        return { success: true };
-      } catch (error) {
-        console.error('Main: Failed to prepare or send print job:', error);
-        if (fs.existsSync(filePath)) {
-          fs.unlinkSync(filePath);
-        }
-        return { success: false, error: error.message };
-      }
+    ipcMain.on('print-invoice', async (event, invoiceData) => {
+      console.log('Main: Received print-invoice IPC call. Passing data to printer.js');
+      printInvoice(invoiceData);
     });
 
     ipcMain.handle('regenerate-barcodes', async () => {
