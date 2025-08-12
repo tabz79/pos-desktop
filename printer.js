@@ -55,6 +55,8 @@ function wrapTextWord(text, width) {
 }
 
 function printInvoice(invoiceData) {
+  const isQuotation = invoiceData.isQuotation || false;
+
   try {
     const device = new escpos.USB();
     const printer = new escpos.Printer(device, { encoding: 'CP437' });
@@ -100,15 +102,32 @@ function printInvoice(invoiceData) {
       if (store.store_address) printer.text(store.store_address);
       if (store.store_phone) printer.text(`Phone: ${store.store_phone || ''}`);
       if (store.store_gstin) printer.text(`GSTIN: ${store.store_gstin || ''}`);
+
+      // === TAX INVOICE heading inserted here (between header and meta) ===
+      printer.text('-'.repeat(LINE_WIDTH));
+      try {
+        const heading = isQuotation ? 'PROFORMA INVOICE' : 'TAX INVOICE';
+        printer.align('CT').style('B').text(heading);
+      } catch (e) {
+        // fallback if style not supported
+        const heading = isQuotation ? 'PROFORMA INVOICE' : 'TAX INVOICE';
+        printer.align('CT').text(heading);
+      }
+      // return to normal style for meta
+      try { printer.style('NORMAL'); } catch (e) {}
       printer.text('-'.repeat(LINE_WIDTH));
 
       // ----- META -----
       printer.align('LT');
-      printer.text(`Invoice No: ${meta.invoice_no || ''}`);
+      if (!isQuotation) {
+        printer.text(`Invoice No: ${meta.invoice_no || ''}`);
+      }
       const dateStr = meta.date || meta.datetime || meta.timestamp || '';
       const timeStr = meta.time || '';
       printer.text(`Date: ${dateStr} ${timeStr}`.trim());
-      printer.text(`Payment Method: ${meta.payment_method || ''}`);
+      if (!isQuotation) {
+        printer.text(`Payment Method: ${meta.payment_method || ''}`);
+      }
       if (meta.customer_name) printer.text(`Customer: ${meta.customer_name}`);
       if (meta.customer_phone) printer.text(`Phone: ${meta.customer_phone}`);
       if (meta.customer_gstin) printer.text(`GSTIN: ${meta.customer_gstin}`);

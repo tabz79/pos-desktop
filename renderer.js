@@ -1101,7 +1101,7 @@ async function updateProductModalSubCategoryDropdown(category) {
 }
 
 
-async function populateInvoiceModal(cartItems, invoiceNo) {
+async function populateInvoiceModal(cartItems, invoiceNo, isQuotation = false) {
   const storeSettings = await window.api.getStoreSettings();
   const invoiceHeader = document.getElementById('invoice-header');
   const invoiceMeta = document.getElementById('invoice-meta');
@@ -1109,11 +1109,12 @@ async function populateInvoiceModal(cartItems, invoiceNo) {
   const invoiceTotal = document.getElementById('invoice-total');
 
   // Store Header
+  const invoiceType = isQuotation ? 'PROFORMA INVOICE' : 'TAX INVOICE';
   let headerHTML = `
     <div class="text-center mb-1">
       <div class="text-lg font-bold">${storeSettings?.store_name || "Asian Sports"}</div>
       <div class="text-sm">No. 1 Store for All Your Sporting&nbsp;needs</div>
-      <div class="border-t border-b my-1 py-0.5 text-sm font-semibold">TAX INVOICE</div>
+      <div class="border-t border-b my-1 py-0.5 text-sm font-semibold">${invoiceType}</div>
     </div>
     <div class="text-xs leading-tight mt-1 text-left">
       ${storeSettings?.store_address || "Yellandu Cross Road, IT Hub Circle"}<br>
@@ -1127,7 +1128,9 @@ async function populateInvoiceModal(cartItems, invoiceNo) {
 
   // Invoice Meta
   const now = new Date();
-  const metaHTML = `
+  const metaHTML = isQuotation
+    ? ''
+    : `
     <div class="text-xs mb-1">
       <div>Invoice No: ${invoiceNo}</div>
       <div>Date: ${now.toLocaleDateString()} ${now.toLocaleTimeString()}</div>
@@ -1136,8 +1139,8 @@ async function populateInvoiceModal(cartItems, invoiceNo) {
   if (invoiceMeta) invoiceMeta.innerHTML = metaHTML;
 
   // Customer Details
-  const customerName = document.getElementById("customerName")?.value || "";
-  const customerPhone = document.getElementById("customerPhone")?.value || "";
+  const customerName = document.getElementById("custName")?.value || "";
+  const customerPhone = document.getElementById("custPhone")?.value || "";
   const custGSTIN = document.getElementById("custGSTIN")?.value || "";
   const customerHTML = `
     <div class="text-xs border-t pt-1">
@@ -1742,17 +1745,17 @@ async function renderCartOverlay() {
       console.log("Post print cleanup done.", result);
   }
 
-  async function completeSaleAndPrint() {
-  console.log('Renderer: Before print call.');
+    async function completeSaleAndPrint(isQuotation = false) {
+  console.log(`Renderer: Before print call. isQuotation: ${isQuotation}`);
   
   // First, save the sale and get the final invoice details
-  const customerName = document.getElementById("customerName")?.value || "";
-  const customerPhone = document.getElementById("customerPhone")?.value || "";
+  const customerName = document.getElementById("custName")?.value || "";
+  const customerPhone = document.getElementById("custPhone")?.value || "";
   const gstin = document.getElementById("custGSTIN")?.value?.trim() || null;
   const invoiceNo = document.getElementById("customerInvoiceNo")?.value || generateInvoiceNumber();
   const paymentMethod = document.getElementById("paymentMode")?.value?.trim() || "Cash";
 
-  if (!invoiceNo || cart.length === 0) {
+  if (!isQuotation && (!invoiceNo || cart.length === 0)) {
     showToast(cart.length === 0 ? "🛒 Cart is empty." : "⚠️ Invoice number missing.");
     return;
   }
@@ -1772,20 +1775,23 @@ async function renderCartOverlay() {
     return { ...item, product_id: product?.product_id || null, final_amount: parseFloat(finalAmount.toFixed(2)), gst_percent: gst, discount: discount };
   });
 
-  const salePayload = {
-    invoice_no: activeInvoiceNo,
-    timestamp: new Date().toISOString(),
-    customer_name: customerName,
-    customer_phone: customerPhone,
-    customer_gstin: gstin,
-    payment_method: paymentMethod,
-    items: itemsWithAmount
-  };
+  let result = null;
+  if (!isQuotation) {
+    const salePayload = {
+      invoice_no: activeInvoiceNo,
+      timestamp: new Date().toISOString(),
+      customer_name: customerName,
+      customer_phone: customerPhone,
+      customer_gstin: gstin,
+      payment_method: paymentMethod,
+      items: itemsWithAmount
+    };
 
-  const result = await window.api.saveSale(salePayload);
-  if (!result?.success) {
-    showToast("❌ Failed to save sale.");
-    return;
+    result = await window.api.saveSale(salePayload);
+    if (!result?.success) {
+      showToast("❌ Failed to save sale.");
+      return;
+    }
   }
   
   // Now that sale is saved, gather data for printing
@@ -1819,10 +1825,10 @@ async function renderCartOverlay() {
   const payable = grandTotal;
 
   const invoiceMeta = {
-    invoice_no: result.invoice_no,
+    invoice_no: isQuotation ? null : result?.invoice_no,
     date: now.toLocaleDateString(),
     time: now.toLocaleTimeString(),
-    payment_method: paymentMethod,
+    payment_method: isQuotation ? null : paymentMethod,
     customer_name: customerName,
     customer_phone: customerPhone,
     customer_gstin: gstin
@@ -1841,7 +1847,8 @@ async function renderCartOverlay() {
     store: storeInfo,
     meta: invoiceMeta,
     items: itemsWithAmount,
-    totals: totals
+    totals: totals,
+    isQuotation: isQuotation
   };
 
   try {
@@ -1856,15 +1863,21 @@ async function renderCartOverlay() {
     showToast("🖨️ Print failed. Check printer connection.");
   } finally {
     // This now correctly runs after the print job is sent.
-    doPostPrintCleanup(result);
+    if (!isQuotation) {
+      doPostPrintCleanup(result);
+    }
   }
 }
 
   const confirmBtn = document.getElementById("cartCheckoutBtn");
   if (confirmBtn) {
 	  confirmBtn.disabled = false; // 👈 this is what’s missing!
-    confirmBtn.onclick = completeSaleAndPrint;
+    confirmBtn.onclick = () => completeSaleAndPrint(false);
   }
+
+  window.getCart = () => cart;
+  window.populateInvoiceModal = populateInvoiceModal;
+  window.completeSaleAndPrint = completeSaleAndPrint;
 // ✅ Wire Preview Invoice button ONCE when overlay is rendered
 const previewBtn = document.getElementById("previewInvoiceBtn");
 if (previewBtn) {
