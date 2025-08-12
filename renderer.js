@@ -1101,7 +1101,7 @@ async function updateProductModalSubCategoryDropdown(category) {
 }
 
 
-async function populateInvoiceModal(cartItems, invoiceNo) {
+async function populateInvoiceModal(cartItems, invoiceNo, isQuotation = false) {
   const storeSettings = await window.api.getStoreSettings();
   const invoiceHeader = document.getElementById('invoice-header');
   const invoiceMeta = document.getElementById('invoice-meta');
@@ -1109,11 +1109,12 @@ async function populateInvoiceModal(cartItems, invoiceNo) {
   const invoiceTotal = document.getElementById('invoice-total');
 
   // Store Header
+  const invoiceType = isQuotation ? 'PROFORMA INVOICE' : 'TAX INVOICE';
   let headerHTML = `
     <div class="text-center mb-1">
       <div class="text-lg font-bold">${storeSettings?.store_name || "Asian Sports"}</div>
       <div class="text-sm">No. 1 Store for All Your Sporting&nbsp;needs</div>
-      <div class="border-t border-b my-1 py-0.5 text-sm font-semibold">TAX INVOICE</div>
+      <div class="border-t border-b my-1 py-0.5 text-sm font-semibold">${invoiceType}</div>
     </div>
     <div class="text-xs leading-tight mt-1 text-left">
       ${storeSettings?.store_address || "Yellandu Cross Road, IT Hub Circle"}<br>
@@ -1127,7 +1128,9 @@ async function populateInvoiceModal(cartItems, invoiceNo) {
 
   // Invoice Meta
   const now = new Date();
-  const metaHTML = `
+  const metaHTML = isQuotation
+    ? ''
+    : `
     <div class="text-xs mb-1">
       <div>Invoice No: ${invoiceNo}</div>
       <div>Date: ${now.toLocaleDateString()} ${now.toLocaleTimeString()}</div>
@@ -1136,8 +1139,8 @@ async function populateInvoiceModal(cartItems, invoiceNo) {
   if (invoiceMeta) invoiceMeta.innerHTML = metaHTML;
 
   // Customer Details
-  const customerName = document.getElementById("customerName")?.value || "";
-  const customerPhone = document.getElementById("customerPhone")?.value || "";
+  const customerName = document.getElementById("custName")?.value || "";
+  const customerPhone = document.getElementById("custPhone")?.value || "";
   const custGSTIN = document.getElementById("custGSTIN")?.value || "";
   const customerHTML = `
     <div class="text-xs border-t pt-1">
@@ -1153,6 +1156,17 @@ async function populateInvoiceModal(cartItems, invoiceNo) {
   let totalAmount = 0;
   let totalGST = 0;
   let totalDiscount = 0;
+  const colWidths = {
+    sno: '5%',
+    item: '30%',
+    rate: '13%',
+    gstPercent: '7%',
+    gstAmount: '13%',
+    qty: '5%',
+    disc: '12%',
+    amount: '15%'
+  };
+
   const itemsHTML = cartItems.map((item, index) => {
     const product = allProducts.find(p => p.id === item.id) || {};
     const gstRate = item.gst_percent || product.gst_percent || 0;
@@ -1170,33 +1184,47 @@ async function populateInvoiceModal(cartItems, invoiceNo) {
     totalDiscount += discount;
 
     return `
-      <div class="grid grid-cols-12 gap-1 text-xs py-0.5 border-b">
-        <div class="col-span-1">${index + 1}</div>
-        <div class="col-span-5">${item.name}</div>
-        <div class="col-span-1 text-right">₹${price.toFixed(2)}</div>
-        <div class="col-span-1 text-right">${gstRate}%</div>
-        <div class="col-span-1 text-right">₹${gstAmount.toFixed(2)}</div>
-        <div class="col-span-1 text-right">${qty}</div>
-        <div class="col-span-1 text-right">₹${discount.toFixed(2)}</div>
-        <div class="col-span-1 text-right">₹${finalAmount.toFixed(2)}</div>
-      </div>
+      <tr class="border-b">
+        <td style="width: ${colWidths.sno}; text-align: center;">${index + 1}</td>
+        <td style="width: ${colWidths.item};">${item.name}</td>
+        <td style="width: ${colWidths.rate}; text-align: right;">₹${price.toFixed(2)}</td>
+        <td style="width: ${colWidths.gstPercent}; text-align: right;">${gstRate}%</td>
+        <td style="width: ${colWidths.gstAmount}; text-align: right;">₹${gstAmount.toFixed(2)}</td>
+        <td style="width: ${colWidths.qty}; text-align: right;">${qty}</td>
+        <td style="width: ${colWidths.disc}; text-align: right;">₹${discount.toFixed(2)}</td>
+        <td style="width: ${colWidths.amount}; text-align: right;">₹${finalAmount.toFixed(2)}</td>
+      </tr>
     `;
-  }).join("");
+  }).join('');
 
-  const headerRow = `
-    <div class="grid grid-cols-12 gap-1 text-xs font-medium bg-gray-100 py-0.5">
-      <div class="col-span-1">S.No</div>
-      <div class="col-span-5">Item</div>
-      <div class="col-span-1 text-right">Rate</div>
-      <div class="col-span-1 text-right">GST%</div>
-      <div class="col-span-1 text-right">GST Amt</div>
-      <div class="col-span-1 text-right">Qty</div>
-      <div class="col-span-1 text-right">Disc.</div>
-      <div class="col-span-1 text-right">Amt</div>
-    </div>
+  const tableContent = `
+    <style>
+      /* Scoped styles for invoice preview table */
+      #invoice-items table td:nth-child(2) { /* Targets the 'Item' column (2nd td) */
+        word-wrap: break-word;
+        white-space: normal;
+      }
+    </style>
+    <table style="width: 100%; table-layout: fixed; border-collapse: collapse;" class="text-xs">
+      <thead>
+        <tr class="bg-gray-100">
+          <th style="width: ${colWidths.sno}; text-align: center; padding: 4px;">S.No</th>
+          <th style="width: ${colWidths.item}; text-align: left; padding: 4px;">Item</th>
+          <th style="width: ${colWidths.rate}; text-align: right; padding: 4px;">Rate</th>
+          <th style="width: ${colWidths.gstPercent}; text-align: right; padding: 4px;">GST%</th>
+          <th style="width: ${colWidths.gstAmount}; text-align: right; padding: 4px;">GST Amt</th>
+          <th style="width: ${colWidths.qty}; text-align: right; padding: 4px;">Qty</th>
+          <th style="width: ${colWidths.disc}; text-align: right; padding: 4px;">Disc.</th>
+          <th style="width: ${colWidths.amount}; text-align: right; padding: 4px;">Amt</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${itemsHTML}
+      </tbody>
+    </table>
   `;
 
-  if (invoiceItems) invoiceItems.innerHTML = headerRow + itemsHTML;
+  if (invoiceItems) invoiceItems.innerHTML = tableContent;
 
   // Totals
   const cgst = totalGST / 2;
@@ -1742,17 +1770,17 @@ async function renderCartOverlay() {
       console.log("Post print cleanup done.", result);
   }
 
-  async function completeSaleAndPrint() {
-  console.log('Renderer: Before print call.');
+    async function completeSaleAndPrint(isQuotation = false) {
+  console.log(`Renderer: Before print call. isQuotation: ${isQuotation}`);
   
   // First, save the sale and get the final invoice details
-  const customerName = document.getElementById("customerName")?.value || "";
-  const customerPhone = document.getElementById("customerPhone")?.value || "";
+  const customerName = document.getElementById("custName")?.value || "";
+  const customerPhone = document.getElementById("custPhone")?.value || "";
   const gstin = document.getElementById("custGSTIN")?.value?.trim() || null;
   const invoiceNo = document.getElementById("customerInvoiceNo")?.value || generateInvoiceNumber();
   const paymentMethod = document.getElementById("paymentMode")?.value?.trim() || "Cash";
 
-  if (!invoiceNo || cart.length === 0) {
+  if (!isQuotation && (!invoiceNo || cart.length === 0)) {
     showToast(cart.length === 0 ? "🛒 Cart is empty." : "⚠️ Invoice number missing.");
     return;
   }
@@ -1772,20 +1800,23 @@ async function renderCartOverlay() {
     return { ...item, product_id: product?.product_id || null, final_amount: parseFloat(finalAmount.toFixed(2)), gst_percent: gst, discount: discount };
   });
 
-  const salePayload = {
-    invoice_no: activeInvoiceNo,
-    timestamp: new Date().toISOString(),
-    customer_name: customerName,
-    customer_phone: customerPhone,
-    customer_gstin: gstin,
-    payment_method: paymentMethod,
-    items: itemsWithAmount
-  };
+  let result = null;
+  if (!isQuotation) {
+    const salePayload = {
+      invoice_no: activeInvoiceNo,
+      timestamp: new Date().toISOString(),
+      customer_name: customerName,
+      customer_phone: customerPhone,
+      customer_gstin: gstin,
+      payment_method: paymentMethod,
+      items: itemsWithAmount
+    };
 
-  const result = await window.api.saveSale(salePayload);
-  if (!result?.success) {
-    showToast("❌ Failed to save sale.");
-    return;
+    result = await window.api.saveSale(salePayload);
+    if (!result?.success) {
+      showToast("❌ Failed to save sale.");
+      return;
+    }
   }
   
   // Now that sale is saved, gather data for printing
@@ -1819,10 +1850,10 @@ async function renderCartOverlay() {
   const payable = grandTotal;
 
   const invoiceMeta = {
-    invoice_no: result.invoice_no,
+    invoice_no: isQuotation ? null : result?.invoice_no,
     date: now.toLocaleDateString(),
     time: now.toLocaleTimeString(),
-    payment_method: paymentMethod,
+    payment_method: isQuotation ? null : paymentMethod,
     customer_name: customerName,
     customer_phone: customerPhone,
     customer_gstin: gstin
@@ -1841,7 +1872,8 @@ async function renderCartOverlay() {
     store: storeInfo,
     meta: invoiceMeta,
     items: itemsWithAmount,
-    totals: totals
+    totals: totals,
+    isQuotation: isQuotation
   };
 
   try {
@@ -1856,15 +1888,21 @@ async function renderCartOverlay() {
     showToast("🖨️ Print failed. Check printer connection.");
   } finally {
     // This now correctly runs after the print job is sent.
-    doPostPrintCleanup(result);
+    if (!isQuotation) {
+      doPostPrintCleanup(result);
+    }
   }
 }
 
   const confirmBtn = document.getElementById("cartCheckoutBtn");
   if (confirmBtn) {
 	  confirmBtn.disabled = false; // 👈 this is what’s missing!
-    confirmBtn.onclick = completeSaleAndPrint;
+    confirmBtn.onclick = () => completeSaleAndPrint(false);
   }
+
+  window.getCart = () => cart;
+  window.populateInvoiceModal = populateInvoiceModal;
+  window.completeSaleAndPrint = completeSaleAndPrint;
 // ✅ Wire Preview Invoice button ONCE when overlay is rendered
 const previewBtn = document.getElementById("previewInvoiceBtn");
 if (previewBtn) {
