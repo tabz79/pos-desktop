@@ -376,7 +376,7 @@ function renderSalesPaginationControls(totalPages) {
               <span class="text-sm font-medium">Quick Filters:</span>
               <button id="today-filter-btn" class="text-xs bg-gray-200 px-2 py-1 rounded hover:bg-gray-300">Today</button>
               <button id="this-week-filter-btn" class="text-xs bg-gray-200 px-2 py-1 rounded hover:bg-gray-300">This Week</button>
-              <button id="export-csv-btn" class="text-xs bg-green-500 text-white px-2 py-1 rounded hover:bg-green-600 ml-auto">Export CSV</button>
+              <button id="export-csv-btn" class="text-xs bg-green-500 text-white px-2 py-1 rounded hover:bg-green-600 ml-auto">Download GST Report</button>
           </div>
         </div>
         <table class="w-full bg-white shadow rounded text-sm text-left">
@@ -627,19 +627,9 @@ async function setupInvoiceHistoryView() {
             const result = await window.api.exportInvoicesCsv(options);
 
             if (result.success) {
-                const blob = new Blob([result.csv], { type: 'text/csv;charset=utf-8;' });
-                const link = document.createElement('a');
-                const url = URL.createObjectURL(blob);
-                link.setAttribute('href', url);
-                const fileName = `GST_Export_${options.startDate || 'all'}_to_${options.endDate || 'all'}.csv`;
-                link.setAttribute('download', fileName);
-                link.style.visibility = 'hidden';
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                showToast('✅ CSV Export downloaded.');
+                showToast('✅ GST Report generated and opened.');
             } else {
-                showToast('❌ Failed to export CSV: ' + result.error, 'error');
+                showToast('❌ Failed to generate report: ' + result.message, 'error');
             }
         });
     }
