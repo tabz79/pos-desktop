@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld('api', {
   getRecentInvoices: () => ipcRenderer.invoke('get-recent-invoices'),
   getInvoiceDetails: (id) => ipcRenderer.invoke('get-invoice-details', id),
   getInvoices: (options) => ipcRenderer.invoke('get-invoices', options),
+  exportInvoicesCsv: (options) => ipcRenderer.invoke('export-invoices-csv', options),
 
   // ✅ New: Sub-Category fetcher
   getUniqueSubCategories: (category) => ipcRenderer.invoke("getUniqueSubCategories", category),

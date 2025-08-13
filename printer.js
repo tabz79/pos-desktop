@@ -218,23 +218,60 @@ function printInvoice(invoiceData) {
 
       printer.text('-'.repeat(LINE_WIDTH));
 
-      const toNum = v => Number(v ?? 0);
-      printer.style('B').align('CT').text('--- TOTALS ---').align('LT').style('NORMAL');
-      printer.text(`Total GST: ${toNum(totals.total_gst).toFixed(2)}`);
-      printer.text(`CGST: ${toNum(totals.cgst).toFixed(2)}`);
-      printer.text(`SGST: ${toNum(totals.sgst).toFixed(2)}`);
-      printer.text(`Total Amount: ${toNum(totals.total_amount).toFixed(2)}`);
-      if (toNum(totals.discount) > 0) {
-        printer.text(`Discount: -${toNum(totals.discount).toFixed(2)}`);
+      // Safer numeric conversion helper: treats undefined/null/NaN/non-finite as 0
+      const toNum = v => {
+        const n = Number(v ?? 0);
+        return Number.isFinite(n) ? n : 0;
+      };
+
+      // Normalize totals to numeric values with fallbacks to avoid NaN or missing properties.
+      const safeTotals = {
+        total_gst: toNum(totals.total_gst),
+        cgst: toNum(totals.cgst),
+        sgst: toNum(totals.sgst),
+        total_amount: toNum(totals.total_amount),
+        discount: toNum(totals.discount),
+        payable: toNum(totals.payable)
+      };
+
+      // Print totals header
+      try {
+        printer.style('B').align('CT').text('--- TOTALS ---').align('LT').style('NORMAL');
+      } catch (e) {
+        // Some printers/drivers may not support style chaining; ignore.
+        try { printer.align('CT').text('--- TOTALS ---').align('LT'); } catch (err) {}
       }
 
-      printer.style('B').size(2, 1);
-      printer.text(`Payable: ${toNum(totals.payable).toFixed(2)}`);
+      // Don't print GST footer on proforma (quotation) by default — only show on real Tax Invoice.
+      if (!isQuotation) {
+        // Print GST details for Tax Invoice
+        printer.text(`Total GST: ${safeTotals.total_gst.toFixed(2)}`);
+        printer.text(`CGST: ${safeTotals.cgst.toFixed(2)}`);
+        printer.text(`SGST: ${safeTotals.sgst.toFixed(2)}`);
+      }
+
+      printer.text(`Total Amount: ${safeTotals.total_amount.toFixed(2)}`);
+      if (safeTotals.discount > 0) {
+        printer.text(`Discount: -${safeTotals.discount.toFixed(2)}`);
+      }
+
+      try {
+        printer.style('B').size(2, 1);
+      } catch (e) {
+        // ignore if not supported
+      }
+      printer.text(`Payable: ${safeTotals.payable.toFixed(2)}`);
 
       // Footer
-      printer.size(1, 1).style('NORMAL');
+      try {
+        printer.size(1, 1).style('NORMAL');
+      } catch (e) {}
       printer.text('-'.repeat(LINE_WIDTH));
-      printer.align('CT').style('B').text('Thank you! Visit again.');
+      try {
+        printer.align('CT').style('B').text('Thank you! Visit again.');
+      } catch (e) {
+        try { printer.align('CT').text('Thank you! Visit again.'); } catch (err) {}
+      }
 
       printer.feed(1);
       printer.cut();

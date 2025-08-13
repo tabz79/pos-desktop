@@ -490,6 +490,56 @@ function getInvoices({ page = 1, limit = 15, startDate, endDate, searchQuery = '
   }
 }
 
+function getInvoicesForExport({ startDate, endDate, searchQuery = '' }) {
+  try {
+    let whereClauses = [];
+    let params = [];
+
+    if (startDate) {
+      whereClauses.push(`date(s.timestamp) >= ?`);
+      params.push(startDate);
+    }
+    if (endDate) {
+      whereClauses.push(`date(s.timestamp) <= ?`);
+      params.push(endDate);
+    }
+    if (searchQuery) {
+      whereClauses.push(`(s.invoice_no LIKE ? OR s.customer_name LIKE ?)`);
+      params.push(`%${searchQuery}%`, `%${searchQuery}%`);
+    }
+
+    const where = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+
+    const stmt = db.prepare(`
+      SELECT
+        s.invoice_no,
+        s.timestamp,
+        s.customer_name,
+        s.customer_gstin,
+        (si.taxable_value + si.gst_amount) as total,
+        si.name as item_name,
+        si.quantity,
+        si.price,
+        si.gst_percent,
+        si.taxable_value,
+        si.gst_amount,
+        si.cgst,
+        si.sgst
+      FROM sales s
+      JOIN sale_items si ON s.id = si.sale_id
+      ${where}
+      ORDER BY s.timestamp ASC, s.invoice_no ASC
+    `);
+
+    const data = stmt.all(...params);
+    return { success: true, data };
+
+  } catch (err) {
+    console.error("❌ Failed to get invoices for export:", err);
+    return { success: false, data: [] };
+  }
+}
+
 /*
 // 🧠 Safe schema patch for store_settings (runs only if columns are missing)
 try {
@@ -769,6 +819,7 @@ module.exports = {
   getRecentInvoices,
   getInvoiceDetails,
   getInvoices,
+  getInvoicesForExport,
   exportDataDump,
   importDataDump,
   importProductsFromCSV,

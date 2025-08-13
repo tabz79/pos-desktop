@@ -9,6 +9,11 @@
  * @param {string} [params.model_name=''] - Model name
  * @returns {{product_id: string, barcode_value: string}}
  */
+
+// Global state for invoice navigation
+window.currentInvoicePageData = [];
+window.currentInvoicePageIndex = -1;
+
 function parsePriceFromModel(model_name = '') {
   if (!model_name) return null;
   model_name = model_name.trim();
@@ -350,7 +355,6 @@ function renderSalesPaginationControls(totalPages) {
       </div>
       <div class="p-6 pt-0">
         <div class="bg-white p-4 rounded-lg shadow mb-6">
-        <div class="bg-white p-4 rounded-lg shadow mb-6">
           <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div>
               <label for="start-date" class="block text-sm font-medium">Start Date</label>
@@ -367,6 +371,12 @@ function renderSalesPaginationControls(totalPages) {
             <div class="flex items-end">
               <button id="filter-invoices-btn" class="bg-primary text-white px-4 py-2 rounded w-full hover:bg-primary-dark transition-colors duration-200">Filter</button>
             </div>
+          </div>
+          <div class="flex items-center space-x-2 mt-2">
+              <span class="text-sm font-medium">Quick Filters:</span>
+              <button id="today-filter-btn" class="text-xs bg-gray-200 px-2 py-1 rounded hover:bg-gray-300">Today</button>
+              <button id="this-week-filter-btn" class="text-xs bg-gray-200 px-2 py-1 rounded hover:bg-gray-300">This Week</button>
+              <button id="export-csv-btn" class="text-xs bg-green-500 text-white px-2 py-1 rounded hover:bg-green-600 ml-auto">Export CSV</button>
           </div>
         </div>
         <table class="w-full bg-white shadow rounded text-sm text-left">
@@ -573,6 +583,68 @@ async function setupInvoiceHistoryView() {
   const invoiceTable = document.getElementById('invoice-history-table');
   const paginationControls = document.getElementById('pagination-controls');
 
+    // --- QUICK FILTER LOGIC START ---
+    const todayFilterBtn = document.getElementById('today-filter-btn');
+    const thisWeekFilterBtn = document.getElementById('this-week-filter-btn');
+
+    const formatDate = (date) => date.toISOString().slice(0, 10);
+
+    if (todayFilterBtn) {
+        todayFilterBtn.addEventListener('click', () => {
+            const today = new Date();
+            startDateInput.value = formatDate(today);
+            endDateInput.value = formatDate(today);
+            filterBtn.click();
+        });
+    }
+
+    if (thisWeekFilterBtn) {
+        thisWeekFilterBtn.addEventListener('click', () => {
+            const today = new Date();
+            const dayOfWeek = today.getDay(); // Sunday = 0, Monday = 1, etc.
+            const firstDayOfWeek = new Date(today.setDate(today.getDate() - dayOfWeek));
+            const lastDayOfWeek = new Date(firstDayOfWeek);
+            lastDayOfWeek.setDate(lastDayOfWeek.getDate() + 6);
+            
+            startDateInput.value = formatDate(firstDayOfWeek);
+            endDateInput.value = formatDate(lastDayOfWeek);
+            filterBtn.click();
+        });
+    }
+    // --- QUICK FILTER LOGIC END ---
+
+    // --- CSV EXPORT LOGIC START ---
+    const exportCsvBtn = document.getElementById('export-csv-btn');
+    if (exportCsvBtn) {
+        exportCsvBtn.addEventListener('click', async () => {
+            const options = {
+                startDate: startDateInput.value,
+                endDate: endDateInput.value,
+                searchQuery: searchInput.value
+            };
+
+            showToast('⏳ Generating CSV export...');
+            const result = await window.api.exportInvoicesCsv(options);
+
+            if (result.success) {
+                const blob = new Blob([result.csv], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement('a');
+                const url = URL.createObjectURL(blob);
+                link.setAttribute('href', url);
+                const fileName = `GST_Export_${options.startDate || 'all'}_to_${options.endDate || 'all'}.csv`;
+                link.setAttribute('download', fileName);
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                showToast('✅ CSV Export downloaded.');
+            } else {
+                showToast('❌ Failed to export CSV: ' + result.error, 'error');
+            }
+        });
+    }
+    // --- CSV EXPORT LOGIC END ---
+
   async function fetchAndRenderInvoices() {
     const options = {
       page: currentPage,
@@ -582,6 +654,8 @@ async function setupInvoiceHistoryView() {
       searchQuery: searchInput.value
     };
     const { data, total } = await window.api.getInvoices(options);
+
+    window.currentInvoicePageData = data; // Store current page data for navigation
 
     invoiceTable.innerHTML = data.map(inv => `
       <tr class="border-b">
@@ -635,11 +709,146 @@ async function setupInvoiceHistoryView() {
 }
 
 window.viewInvoice = async function(id) {
+  // Log 1: Click detected and invoiceId
+  console.log('DEBUG-INVOICE-MODAL: View button click detected. Invoice ID:', id);
+
+  // Log 2: Page data at click time and index
+  console.log('DEBUG-INVOICE-MODAL: currentInvoicePageData at click:', window.currentInvoicePageData);
+  console.log('DEBUG-INVOICE-MODAL: currentInvoicePageIndex before find:', window.currentInvoicePageIndex);
+
+  // Find the index of the current invoice in the current page data
+  window.currentInvoicePageIndex = window.currentInvoicePageData.findIndex(inv => inv.id === id);
+
+  console.log('DEBUG-INVOICE-MODAL: currentInvoicePageIndex after find:', window.currentInvoicePageIndex);
+
+  // Log 3: Before fetching invoice details
+  console.log('DEBUG-INVOICE-MODAL: Fetching invoice details for ID:', id);
   const invoice = await window.api.getInvoiceDetails(id);
+
+  // Log 4: Result from getInvoiceDetails
+  console.log('DEBUG-INVOICE-MODAL: Result from getInvoiceDetails:', invoice);
+
   if (invoice) {
+    // Log 5: Before showing the modal (populateInvoiceModal also shows it)
+    console.log('DEBUG-INVOICE-MODAL: Attempting to populate and show modal with invoice data.');
+
+    // --- NEW DEBUG LOGS START ---
+    const invoiceModal = document.getElementById('invoice-modal');
+    console.log('DEBUG-INVOICE-MODAL: Modal element existence check:', invoiceModal ? 'Exists' : 'Does NOT exist');
+
+    if (invoiceModal) {
+      console.log('DEBUG-INVOICE-MODAL: Modal classList BEFORE populate:', invoiceModal.classList.value);
+      console.log('DEBUG-INVOICE-MODAL: Modal display style BEFORE populate:', invoiceModal.style.display);
+      console.log('DEBUG-INVOICE-MODAL: Modal visibility style BEFORE populate:', invoiceModal.style.visibility);
+      console.log('DEBUG-INVOICE-MODAL: Modal opacity style BEFORE populate:', invoiceModal.style.opacity);
+    }
+    // --- NEW DEBUG LOGS END ---
+
     populateInvoiceModal(invoice.items, invoice.invoice_no);
+
+    // --- FIX START: Make modal visible ---
+    if (invoiceModal) {
+      console.log('DEBUG-INVOICE-MODAL: Modal classList before show logic:', invoiceModal.classList.value);
+      invoiceModal.classList.remove('hidden');
+      invoiceModal.style.display = 'flex';
+      // Clear inline styles that might be hiding the modal
+      invoiceModal.style.visibility = '';
+      invoiceModal.style.opacity = '';
+      console.log('DEBUG-INVOICE-MODAL: Modal classList after show logic:', invoiceModal.classList.value);
+      console.log('DEBUG-INVOICE-MODAL: Modal display style after show logic:', invoiceModal.style.display);
+    }
+    // --- FIX END ---
+
+    // --- NEW DEBUG LOGS START (AFTER populateInvoiceModal call) ---
+    if (invoiceModal) {
+      console.log('DEBUG-INVOICE-MODAL: Modal classList AFTER populate:', invoiceModal.classList.value);
+      console.log('DEBUG-INVOICE-MODAL: Modal display style AFTER populate:', invoiceModal.style.display);
+      console.log('DEBUG-INVOICE-MODAL: Modal visibility style AFTER populate:', invoiceModal.style.visibility);
+      console.log('DEBUG-INVOICE-MODAL: Modal opacity style AFTER populate:', invoiceModal.style.opacity);
+    }
+    // --- NEW DEBUG LOGS END ---
+
+    // Wire Next/Prev buttons and update their state
+    const prevBtn = document.getElementById('prev-invoice-btn');
+    const nextBtn = document.getElementById('next-invoice-btn');
+    const closeBtn = document.getElementById('close-invoice-btn'); // Get close button to re-wire
+
+    // Remove existing listeners to prevent multiple bindings
+    if (prevBtn) prevBtn.removeEventListener('click', window.handlePrevInvoice);
+    if (nextBtn) nextBtn.removeEventListener('click', window.handleNextInvoice);
+    if (closeBtn) closeBtn.removeEventListener('click', window.handleCloseInvoiceModal); // Assuming a handler for close
+
+    // Add new listeners
+    if (prevBtn) prevBtn.addEventListener('click', window.handlePrevInvoice);
+    if (nextBtn) nextBtn.addEventListener('click', window.handleNextInvoice);
+    // Re-wire close button to ensure it works after navigation setup
+    if (closeBtn) closeBtn.addEventListener('click', window.handleCloseInvoiceModal);
+
+    window.updateModalNavigationButtons();
+  } else {
+    console.log('DEBUG-INVOICE-MODAL: Invoice details not found or invalid for ID:', id);
   }
 }
+
+// Function to update the state of Next/Prev buttons
+window.updateModalNavigationButtons = function() {
+  const prevBtn = document.getElementById('prev-invoice-btn');
+  const nextBtn = document.getElementById('next-invoice-btn');
+
+  if (prevBtn) {
+    prevBtn.disabled = window.currentInvoicePageIndex <= 0;
+  }
+  if (nextBtn) {
+    nextBtn.disabled = window.currentInvoicePageIndex >= window.currentInvoicePageData.length - 1;
+  }
+};
+
+// Handler for Previous button
+window.handlePrevInvoice = async function() {
+  // --- FIX START: Robust invoice navigation ---
+  if (window.currentInvoicePageIndex > 0) {
+    window.currentInvoicePageIndex--;
+    const prevInvoice = window.currentInvoicePageData[window.currentInvoicePageIndex];
+    if (prevInvoice && prevInvoice.id) {
+      const invoice = await window.api.getInvoiceDetails(prevInvoice.id);
+      if (invoice) {
+        populateInvoiceModal(invoice.items, invoice.invoice_no);
+        window.updateModalNavigationButtons();
+      }
+    }
+  }
+  // --- FIX END: Robust invoice navigation ---
+};
+
+// Handler for Next button
+window.handleNextInvoice = async function() {
+  // --- FIX START: Robust invoice navigation ---
+  if (window.currentInvoicePageIndex < window.currentInvoicePageData.length - 1) {
+    window.currentInvoicePageIndex++;
+    const nextInvoice = window.currentInvoicePageData[window.currentInvoicePageIndex];
+    if (nextInvoice && nextInvoice.id) {
+      const invoice = await window.api.getInvoiceDetails(nextInvoice.id);
+      if (invoice) {
+        populateInvoiceModal(invoice.items, invoice.invoice_no);
+        window.updateModalNavigationButtons();
+      }
+    }
+  }
+  // --- FIX END: Robust invoice navigation ---
+};
+
+// Handler for closing the invoice modal (to ensure it's re-wired correctly)
+window.handleCloseInvoiceModal = function() {
+  const invoiceModal = document.getElementById('invoice-modal');
+  if (invoiceModal) {
+    // --- FIX START: Proper modal close ---
+    invoiceModal.classList.add('hidden');
+    invoiceModal.style.display = ''; // Reset display
+    invoiceModal.style.visibility = ''; // Reset visibility
+    invoiceModal.style.opacity = ''; // Reset opacity
+    // --- FIX END: Proper modal close ---
+  }
+};
 
 function setupProductView() {
   let currentPage = 1; // Current page for product pagination
@@ -1208,7 +1417,7 @@ async function populateInvoiceModal(cartItems, invoiceNo, isQuotation = false) {
     <table style="width: 100%; table-layout: fixed; border-collapse: collapse;" class="text-xs">
       <thead>
         <tr class="bg-gray-100">
-          <th style="width: ${colWidths.sno}; text-align: center; padding: 4px;">S.No</th>
+          <th style="width: ${colWidths.sno}; text-align: center; padding: 4px; word-wrap: break-word;">S.No</th>
           <th style="width: ${colWidths.item}; text-align: left; padding: 4px;">Item</th>
           <th style="width: ${colWidths.rate}; text-align: right; padding: 4px;">Rate</th>
           <th style="width: ${colWidths.gstPercent}; text-align: right; padding: 4px;">GST%</th>
@@ -1768,6 +1977,61 @@ async function renderCartOverlay() {
   // Minimal function definition for post-print cleanup
   function doPostPrintCleanup(result) {
       console.log("Post print cleanup done.", result);
+
+      try {
+          // Store the current cart items as the last sale before clearing the cart
+          // This is crucial for the invoice preview.
+          lastSale = [...cart]; // Make a copy of the cart before clearing it.
+
+          // 1. Clear the cart and update UI
+          cart.length = 0; // Empty the cart array
+          updateCartUI(); // Update the cart display
+
+          // 2. Hide the cart overlay
+          const cartOverlay = document.getElementById("cartOverlay");
+          if (cartOverlay) {
+              cartOverlay.classList.add("hidden");
+          }
+
+          // 3. Navigate back to Dashboard
+          renderView('Dashboard');
+
+          // 4. Show the invoice preview modal
+          const invoiceModal = document.getElementById('invoice-modal');
+          if (invoiceModal) {
+              // Populate the invoice modal with the last sale data
+              populateInvoiceModal(lastSale, activeInvoiceNo);
+              invoiceModal.classList.remove('hidden');
+
+              // 5. Allow the user to close the preview early with the Close button
+              const closeInvoiceBtn = document.getElementById('close-invoice-btn');
+              let autoCloseTimeout; // Declare here to be accessible by both close handler and setTimeout
+
+              if (closeInvoiceBtn) {
+                  // Ensure only one event listener is attached
+                  const existingListener = closeInvoiceBtn.onclick;
+                  if (existingListener && existingListener._isGeminiAdded) {
+                      closeInvoiceBtn.removeEventListener('click', existingListener);
+                  }
+                  const newListener = () => {
+                      invoiceModal.classList.add('hidden');
+                      clearTimeout(autoCloseTimeout); // Clear auto-close timeout if closed manually
+                  };
+                  newListener._isGeminiAdded = true; // Mark the listener
+                  closeInvoiceBtn.addEventListener('click', newListener);
+              }
+
+              // 6. Auto-close the invoice preview modal after 3 seconds
+              autoCloseTimeout = setTimeout(() => {
+                  if (invoiceModal && !invoiceModal.classList.contains('hidden')) {
+                      invoiceModal.classList.add('hidden');
+                  }
+              }, 3000);
+          }
+
+      } catch (err) {
+          console.error("Error during post-print cleanup:", err);
+      }
   }
 
     async function completeSaleAndPrint(isQuotation = false) {
@@ -2556,6 +2820,18 @@ async function populateInvoiceModal(items = [], invoiceNo = '0000') {
   }
 
   const modal = document.getElementById('invoice-modal');
-  if (modal) modal.classList.remove('hidden');
+  // DEBUG: Check if modal element is found
+  console.log('DEBUG-INVOICE-MODAL: Inside populateInvoiceModal - modal element:', modal);
+  if (modal) {
+    // DEBUG: Before removing hidden class and adding flex
+    console.log('DEBUG-INVOICE-MODAL: Inside populateInvoiceModal - Removing "hidden" class and adding "flex".');
+    modal.classList.remove('hidden');
+    modal.classList.add('flex'); // Add flex to make it visible and use flexbox
+    // DEBUG: After removing hidden class and adding flex
+    console.log('DEBUG-INVOICE-MODAL: Inside populateInvoiceModal - Classes updated. Current classList:', modal.classList.value);
+    console.log('DEBUG-INVOICE-MODAL: Modal shown successfully. Display style:', modal.style.display); // This will likely be empty as Tailwind sets it via class
+  } else {
+    console.log('DEBUG-INVOICE-MODAL: Inside populateInvoiceModal - Modal element not found!');
+  }
   await new Promise(resolve => requestAnimationFrame(resolve));
 }

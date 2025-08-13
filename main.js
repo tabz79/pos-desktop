@@ -1,6 +1,7 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const ExcelJS = require('exceljs');
 const { printInvoice } = require('./printer');
 
 let tailwindCssContent;
@@ -344,6 +345,189 @@ app.whenReady().then(async () => {
 
     ipcMain.handle('get-invoices', async (event, options) => {
       return dbAPI.getInvoices(options);
+    });
+
+    // --- Excel Export Helper ---
+    async function generateExcelReport(data) {
+      const workbook = new ExcelJS.Workbook();
+      const invoiceSheet = workbook.addWorksheet('Invoices');
+      const summarySheet = workbook.addWorksheet('GST Summary');
+
+      // --- Invoices Sheet ---
+      const invoiceHeaders = [
+        { header: 'Invoice Number', key: 'invoice_no', width: 20 },
+        { header: 'Date', key: 'timestamp', width: 15 },
+        { header: 'Customer Name', key: 'customer_name', width: 25 },
+        { header: 'Customer GSTIN', key: 'customer_gstin', width: 20 },
+        { header: 'Item Name', key: 'item_name', width: 30 },
+        { header: 'Quantity', key: 'quantity', width: 10 },
+        { header: 'Price (₹)', key: 'price', width: 15 },
+        { header: 'GST %', key: 'gst_percent', width: 10 },
+        { header: 'Taxable Value (₹)', key: 'taxable_value', width: 20 },
+        { header: 'GST Amount (₹)', key: 'gst_amount', width: 20 },
+        { header: 'CGST (₹)', key: 'cgst', width: 15 },
+        { header: 'SGST (₹)', key: 'sgst', width: 15 },
+        { header: 'Total (₹)', key: 'total', width: 20 },
+      ];
+
+      invoiceSheet.columns = invoiceHeaders;
+
+      // Style Headers
+      invoiceSheet.getRow(1).eachCell((cell) => {
+        cell.font = { bold: true };
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFD3D3D3' },
+        };
+      });
+
+      // Add Rows
+      data.forEach(row => {
+        invoiceSheet.addRow({
+          ...row,
+          gst_percent: (row.gst_percent || 0) / 100, // Divide by 100 for Excel percentage formatting
+          total: row.taxable_value + row.gst_amount,
+        });
+      });
+
+      // Format Cells
+      invoiceSheet.getColumn('timestamp').numFmt = 'dd-mmm-yyyy';
+      invoiceSheet.getColumn('price').numFmt = '₹#,##0.00';
+      invoiceSheet.getColumn('gst_percent').numFmt = '0.00%';
+      invoiceSheet.getColumn('taxable_value').numFmt = '₹#,##0.00';
+      invoiceSheet.getColumn('gst_amount').numFmt = '₹#,##0.00';
+      invoiceSheet.getColumn('cgst').numFmt = '₹#,##0.00';
+      invoiceSheet.getColumn('sgst').numFmt = '₹#,##0.00';
+      invoiceSheet.getColumn('total').numFmt = '₹#,##0.00';
+      invoiceSheet.getColumn('quantity').numFmt = '#,##0';
+
+
+      // --- Totals Footer ---
+      const totalRow = invoiceSheet.addRow([]);
+      totalRow.font = { bold: true };
+      const totalQuantity = data.reduce((sum, row) => sum + row.quantity, 0);
+      const totalTaxableValue = data.reduce((sum, row) => sum + row.taxable_value, 0);
+      const totalGstAmount = data.reduce((sum, row) => sum + row.gst_amount, 0);
+      const totalCgst = data.reduce((sum, row) => sum + row.cgst, 0);
+      const totalSgst = data.reduce((sum, row) => sum + row.sgst, 0);
+      const grandTotal = totalTaxableValue + totalGstAmount;
+
+      totalRow.getCell('E').value = 'Totals';
+      totalRow.getCell('F').value = totalQuantity;
+      totalRow.getCell('I').value = totalTaxableValue;
+      totalRow.getCell('J').value = totalGstAmount;
+      totalRow.getCell('K').value = totalCgst;
+      totalRow.getCell('L').value = totalSgst;
+      totalRow.getCell('M').value = grandTotal;
+      
+      totalRow.getCell('I').numFmt = '₹#,##0.00';
+      totalRow.getCell('J').numFmt = '₹#,##0.00';
+      totalRow.getCell('K').numFmt = '₹#,##0.00';
+      totalRow.getCell('L').numFmt = '₹#,##0.00';
+      totalRow.getCell('M').numFmt = '₹#,##0.00';
+
+
+      // --- GST Summary Sheet ---
+      summarySheet.columns = [
+        { header: 'Description', key: 'desc', width: 25 },
+        { header: 'Amount (₹)', key: 'amount', width: 20 },
+      ];
+      
+      summarySheet.getRow(1).eachCell((cell) => {
+        cell.font = { bold: true };
+      });
+
+      summarySheet.addRows([
+        { desc: 'Total Taxable Value', amount: totalTaxableValue },
+        { desc: 'Total GST Amount', amount: totalGstAmount },
+        { desc: 'Total CGST', amount: totalCgst },
+        { desc: 'Total SGST', amount: totalSgst },
+        { desc: 'Grand Total', amount: grandTotal },
+      ]);
+      
+      summarySheet.getColumn('amount').numFmt = '₹#,##0.00';
+
+
+      return await workbook.xlsx.writeBuffer();
+    }
+
+    // --- CSV Fallback Helper ---
+    function generateCsvFallback(data) {
+      const header = [
+        'InvoiceNo', 'Date', 'CustomerName', 'CustomerGSTIN', 'Total',
+        'ItemName', 'Quantity', 'Price', 'GSTPercent', 'TaxableValue',
+        'GSTAmount', 'CGST', 'SGST'
+      ].join(',');
+
+      const rows = data.map(row => {
+        const sanitizedRow = [
+          row.invoice_no || '',
+          row.timestamp ? new Date(row.timestamp).toISOString() : '',
+          `"${(row.customer_name || '').replace(/"/g, '""')}"`, // Corrected escaping for quotes within customer_name
+          row.customer_gstin || '',
+          row.total || 0,
+          `"${(row.item_name || '').replace(/"/g, '""')}"`, // Corrected escaping for quotes within item_name
+          row.quantity || 0,
+          row.price || 0,
+          (row.gst_percent || 0) / 100,
+          row.taxable_value || 0,
+          row.gst_amount || 0,
+          row.cgst || 0,
+          row.sgst || 0,
+        ];
+        return sanitizedRow.join(',');
+      });
+
+      return [header, ...rows].join('\n');
+    }
+
+
+    ipcMain.handle('export-invoices-csv', async (event, options) => {
+      const result = dbAPI.getInvoicesForExport(options);
+      if (!result.success) {
+        return { success: false, message: 'Failed to retrieve invoices for export.' };
+      }
+
+      const { filePath, canceled } = await dialog.showSaveDialog(mainWindow, {
+        title: 'Export Invoices',
+        defaultPath: `invoices-${options.startDate && options.endDate ? `${options.startDate}-to-${options.endDate}` : new Date().toISOString().slice(0, 10)}.xlsx`,
+        filters: [{ name: 'Excel Files', extensions: ['xlsx'] }],
+      });
+
+      if (canceled) {
+        return { success: false, message: 'Export canceled.' };
+      }
+
+      try {
+        const buffer = await generateExcelReport(result.data);
+        fs.writeFileSync(filePath, buffer);
+        shell.openPath(filePath);
+        return { success: true };
+      } catch (error) {
+        console.error('❌ Failed to generate Excel report:', error);
+        // Log to file
+        const logDir = path.join(app.getPath('logs'), 'error.log');
+        fs.appendFileSync(logDir, `[${new Date().toISOString()}] Excel Export Error: ${error.stack}\n`);
+
+        // Fallback to CSV
+        try {
+          const csvPath = filePath.replace('.xlsx', '.csv');
+          const csvContent = generateCsvFallback(result.data);
+          fs.writeFileSync(csvPath, csvContent);
+          shell.openPath(csvPath);
+          return { 
+            success: false, 
+            message: 'We couldn’t generate the Excel report. A CSV fallback has been created.' 
+          };
+        } catch (csvError) {
+          console.error('❌ Failed to generate CSV fallback:', csvError);
+          return { 
+            success: false, 
+            message: 'We couldn’t generate the Excel report or the CSV fallback. Please try again or contact support.' 
+          };
+        }
+      }
     });
 
     ipcMain.handle("getUniqueSubCategories", (event, category) => {

@@ -157,12 +157,14 @@
         <div class="bg-white rounded-lg p-6 w-[30rem] shadow-lg print:shadow-none print:w-full print:max-w-[600px] print:mx-auto border border-secondary-light">
           <div id="invoice-header" class="mb-4 text-center border-b pb-2"></div>
           <p id="invoice-meta" class="text-xs text-gray-500 mt-1 text-right"></p>
-          <div id="invoice-items" class="space-y-2 mb-4 text-sm max-h-64 overflow-y-auto print:overflow-visible print:max-h-full"></div>
+          <div id="invoice-items" class="space-y-2 mb-4 text-sm max-h-64 overflow-y-auto overflow-x-auto print:overflow-visible print:max-h-full"></div>
           <p id="invoice-total" class="text-right font-semibold text-lg mb-4"></p>
           <div class="text-center mt-4">
             <canvas id="invoice-barcode" class="mx-auto"></canvas>
           </div>
           <div class="flex flex-wrap justify-end items-center gap-2 print:hidden">
+            <button id="prev-invoice-btn" class="px-4 py-2 bg-gray-300 hover:bg-gray-400 text-gray-800 rounded transition-colors duration-200">Previous</button>
+            <button id="next-invoice-btn" class="px-4 py-2 bg-gray-300 hover:bg-gray-400 text-gray-800 rounded transition-colors duration-200">Next</button>
             <select id="print-mode" class="border border-secondary-light rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary">
               <option value="thermal-80">🧾 Thermal (80mm Invoice)</option>
               <option value="a4">🖨️ A4 Full Page</option>
