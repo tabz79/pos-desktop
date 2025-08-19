@@ -4,6 +4,7 @@ let db;
 try {
   const Database = require('better-sqlite3');
   const dbPath = path.join(__dirname, 'pos.db');
+  console.log("📁 [DEBUG] DB path resolved to:", dbPath);
   db = new Database(dbPath);
 
   db.pragma('foreign_keys = ON');
@@ -24,33 +25,41 @@ try {
     const columns = db.prepare(`PRAGMA table_info(products)`).all();
     const hasCategory = columns.some(col => col.name === 'category');
     const hasGST = columns.some(col => col.name === 'gst_percent');
+    const hasProductId = columns.some(col => col.name === 'product_id');
+    const hasSubCategory = columns.some(col => col.name === 'sub_category');
+    const hasBrand = columns.some(col => col.name === 'brand');
+    const hasModelName = columns.some(col => col.name === 'model_name');
+    const hasUnit = columns.some(col => col.name === 'unit');
+    const hasBarcodeValue = columns.some(col => col.name === 'barcode_value');
 
-    if (!hasCategory || !hasGST) {
-      console.log("♻️ Rebuilding products table with category + gst_percent...");
+    if (!hasCategory || !hasGST || !hasProductId || !hasSubCategory || !hasBrand || !hasModelName || !hasUnit || !hasBarcodeValue) {
+      console.log("♻️ Rebuilding products table with new Excel fields...");
       db.exec('PRAGMA foreign_keys = OFF');
-
       db.prepare(`ALTER TABLE products RENAME TO products_old`).run();
-
       db.prepare(`
         CREATE TABLE products (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
+          product_id TEXT UNIQUE,
           name TEXT NOT NULL,
           price REAL NOT NULL,
           stock INTEGER NOT NULL,
           category TEXT,
+          sub_category TEXT,
+          brand TEXT,
+          model_name TEXT,
+          unit TEXT,
           hsn_code TEXT,
-          gst_percent REAL
+          gst_percent REAL,
+          barcode_value TEXT UNIQUE
         )
       `).run();
-
       db.prepare(`
-        INSERT INTO products (id, name, price, stock, hsn_code)
-        SELECT id, name, price, stock, hsn_code FROM products_old
+        INSERT INTO products (id, name, price, stock, category, hsn_code, gst_percent)
+        SELECT id, name, price, stock, category, hsn_code, gst_percent FROM products_old
       `).run();
-
       db.prepare(`DROP TABLE products_old`).run();
       db.exec('PRAGMA foreign_keys = ON');
-      console.log("✅ Products table updated.");
+      console.log("✅ Products table updated with Excel fields.");
     }
   } catch (err) {
     console.error("❌ Failed to migrate products table:", err);
@@ -97,19 +106,16 @@ try {
 
   // ✅ Recreate sale_items with full GST structure
   try {
-    const existing = db.prepare(`SELECT sql FROM sqlite_master WHERE type='table' AND name='sale_items'`).get();
-    if (existing) {
-      console.log("♻️ Dropping old sale_items table...");
-      db.exec('PRAGMA foreign_keys = OFF');
-      db.prepare(`DROP TABLE IF EXISTS sale_items`).run();
-      db.exec('PRAGMA foreign_keys = ON');
-    }
+    console.log("♻️ Forcing recreation of sale_items table...");
+    db.exec('PRAGMA foreign_keys = OFF');
+
+    db.exec('PRAGMA foreign_keys = ON');
 
     db.prepare(`
       CREATE TABLE IF NOT EXISTS sale_items (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         sale_id INTEGER NOT NULL,
-        product_id INTEGER,
+        product_id TEXT, 
         name TEXT NOT NULL,
         price REAL NOT NULL,
         quantity INTEGER NOT NULL,
@@ -133,11 +139,54 @@ try {
     CREATE TABLE IF NOT EXISTS store_settings (
       id INTEGER PRIMARY KEY CHECK (id = 1),
       store_name TEXT,
-      store_address TEXT
+      store_address TEXT,
+      label_printer_name TEXT
     )
   `).run();
 
+  // Migration: Add label_printer_name column if missing
+  try {
+    const cols = db.prepare("PRAGMA table_info(store_settings)").all();
+    const hasLabelPrinterName = cols.some(col => col.name === "label_printer_name");
+    if (!hasLabelPrinterName) {
+      db.prepare("ALTER TABLE store_settings ADD COLUMN label_printer_name TEXT").run();
+      console.log("✅ label_printer_name column added to store_settings table.");
+    } else {
+      console.log("🟡 label_printer_name column already exists in store_settings.");
+    }
+  } catch (err) {
+    console.error("❌ Failed to check or add label_printer_name column:", err.message);
+  }
+
+  // ✅ Create invoice_counter table
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS invoice_counter (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      current_number INTEGER DEFAULT 0
+    )
+  `).run();
+  // Initialize counter if it doesn't exist
+  db.prepare(`INSERT OR IGNORE INTO invoice_counter (id, current_number) VALUES (1, 0)`).run();
+
+  // ✅ Create invoice_daily_counter table
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS invoice_daily_counter (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      last_reset_date TEXT NOT NULL,
+      current_daily_number INTEGER DEFAULT 0
+    )
+  `).run();
+  // Initialize daily counter if it doesn't exist
+  db.prepare(`INSERT OR IGNORE INTO invoice_daily_counter (id, last_reset_date, current_daily_number) VALUES (1, ?, 0)`).run(new Date().toISOString().slice(0, 10));
+
   console.log("✅ SQLite DB initialized successfully.");
+// ⚡ Index boost for Products tab
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_products_id ON products(id DESC);
+  CREATE INDEX IF NOT EXISTS idx_products_category ON products(category);
+  CREATE INDEX IF NOT EXISTS idx_products_sub_category ON products(sub_category);
+  CREATE INDEX IF NOT EXISTS idx_products_brand ON products(brand);
+`);
 } catch (err) {
   console.error("❌ Failed to load better-sqlite3:", err);
   db = null;
@@ -145,15 +194,23 @@ try {
 
 // ✅ Get all products
 function getAllProducts() {
-  const stmt = db.prepare('SELECT * FROM products ORDER BY id DESC');
-  return stmt.all();
+  console.time("⏱️ getAllProducts");
+  const stmt = db.prepare(`
+    SELECT id, product_id, name, category, sub_category, brand, model_name,
+           price, stock, gst_percent
+    FROM products
+    ORDER BY id DESC
+  `);
+  const result = stmt.all();
+  console.timeEnd("⏱️ getAllProducts");
+  return result;
 }
 
 // ✅ Add a new product
 function addProduct(product) {
   const stmt = db.prepare(`
-    INSERT INTO products (name, price, stock, category, hsn_code, gst_percent)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO products (name, price, stock, category, hsn_code, gst_percent, product_id, sub_category, brand, model_name, unit, barcode_value)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const info = stmt.run(
     product.name,
@@ -161,7 +218,13 @@ function addProduct(product) {
     product.stock,
     product.category || null,
     product.hsn_code || null,
-    product.gst_percent ?? null
+    product.gst_percent ?? null,
+    product.product_id || null,
+    product.sub_category || null,
+    product.brand || null,
+    product.model_name || null,
+    product.unit || null,
+    product.barcode_value || null
   );
   return { success: true, id: info.lastInsertRowid };
 }
@@ -185,7 +248,7 @@ function updateProduct(product) {
   try {
     const stmt = db.prepare(`
       UPDATE products
-      SET name = ?, price = ?, stock = ?, category = ?, hsn_code = ?, gst_percent = ?
+      SET name = ?, price = ?, stock = ?, category = ?, hsn_code = ?, gst_percent = ?, product_id = ?, sub_category = ?, brand = ?, model_name = ?, unit = ?, barcode_value = ?
       WHERE id = ?
     `);
     const info = stmt.run(
@@ -195,6 +258,12 @@ function updateProduct(product) {
       product.category || null,
       product.hsn_code || null,
       product.gst_percent ?? null,
+      product.product_id || null,
+      product.sub_category || null,
+      product.brand || null,
+      product.model_name || null,
+      product.unit || null,
+      product.barcode_value || null,
       product.id
     );
     return info.changes > 0
@@ -207,9 +276,22 @@ function updateProduct(product) {
 }
 
 // ✅ Save a full sale (sale + items with GST extracted from MRP)
-function saveSale(items) {
+function saveSale(saleData) {
   try {
-    const timestamp = new Date().toISOString();
+    const {
+      invoice_no,
+      timestamp,
+      payment_method,
+      customer_name,
+      customer_phone,
+      customer_gstin,
+      items
+    } = saleData;
+
+    if (!Array.isArray(items) || items.length === 0) {
+      throw new Error("Sale must include items");
+    }
+
     const enrichedItems = [];
 
     for (const i of items) {
@@ -217,9 +299,7 @@ function saveSale(items) {
       const qty = i.quantity;
       const gstRate = i.gst_percent ?? 0;
 
-      const pricePerUnit = price;
-      const totalMRP = pricePerUnit * qty;
-
+      const totalMRP = price * qty;
       const divisor = 1 + gstRate / 100;
       const taxableValue = +(totalMRP / divisor).toFixed(2);
       const gstAmount = +(totalMRP - taxableValue).toFixed(2);
@@ -236,8 +316,39 @@ function saveSale(items) {
     }
 
     const total = enrichedItems.reduce((acc, i) => acc + i.taxable_value + i.gst_amount, 0);
-    const insertSale = db.prepare(`INSERT INTO sales (total, timestamp) VALUES (?, ?)`);
-    const saleInfo = insertSale.run(total, timestamp);
+
+    // 🧠 Auto-add columns to sales if not present
+    const salesCols = db.prepare("PRAGMA table_info(sales)").all().map(c => c.name);
+    const neededCols = [
+      { name: "invoice_no", type: "TEXT" },
+      { name: "payment_method", type: "TEXT" },
+      { name: "customer_name", type: "TEXT" },
+      { name: "customer_phone", type: "TEXT" },
+      { name: "customer_gstin", type: "TEXT" }
+    ];
+    for (const col of neededCols) {
+      if (!salesCols.includes(col.name)) {
+        db.prepare(`ALTER TABLE sales ADD COLUMN ${col.name} ${col.type}`).run();
+        console.log(`✅ Added column to sales: ${col.name}`);
+      }
+    }
+
+    const insertSale = db.prepare(`
+      INSERT INTO sales (
+        total, timestamp, invoice_no, payment_method,
+        customer_name, customer_phone, customer_gstin
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+    const saleInfo = insertSale.run(
+      total,
+      timestamp,
+      invoice_no, // Use the provided invoice number
+      payment_method,
+      customer_name || null,
+      customer_phone || null,
+      customer_gstin || null
+    );
+
     const saleId = saleInfo.lastInsertRowid;
 
     const insertItem = db.prepare(`
@@ -252,7 +363,7 @@ function saveSale(items) {
       for (const i of items) {
         insertItem.run(
           saleId,
-          i.id || null,
+          i.product_id || null, // Use the generated product_id string
           i.name,
           i.price,
           i.quantity,
@@ -264,7 +375,6 @@ function saveSale(items) {
           i.sgst
         );
 
-        // ✅ Stock update
         if (i.id) {
           db.prepare(`UPDATE products SET stock = stock - ? WHERE id = ?`)
             .run(i.quantity, i.id);
@@ -273,12 +383,179 @@ function saveSale(items) {
     });
 
     insertMany(enrichedItems);
-    return { success: true, sale_id: saleId };
+
+    return {
+      success: true,
+      sale_id: saleId,
+      invoice_no: invoice_no // Send back the provided invoice number
+    };
   } catch (err) {
     console.error("❌ Failed to save sale:", err);
     return { success: false, message: 'Error saving sale' };
   }
 }
+
+// --- DASHBOARD & REPORTING --- 
+
+function getDashboardStats() {
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const month = today.slice(0, 7);
+    const year = today.slice(0, 4);
+
+    const todaySales = db.prepare(`SELECT SUM(total) as total FROM sales WHERE date(timestamp) = ?`).get(today)?.total || 0;
+    const monthSales = db.prepare(`SELECT SUM(total) as total FROM sales WHERE strftime('%Y-%m', timestamp) = ?`).get(month)?.total || 0;
+    const yearSales = db.prepare(`SELECT SUM(total) as total FROM sales WHERE strftime('%Y', timestamp) = ?`).get(year)?.total || 0;
+
+    const topProducts = db.prepare(`
+      SELECT p.name, SUM(si.quantity) as total_quantity
+      FROM sale_items si
+      JOIN products p ON si.product_id = p.product_id
+      GROUP BY si.product_id
+      ORDER BY total_quantity DESC
+      LIMIT 5
+    `).all();
+
+    const monthlySalesChart = db.prepare(`
+      SELECT strftime('%Y-%m', timestamp) as month, SUM(total) as total_sales
+      FROM sales
+      WHERE strftime('%Y', timestamp) = ?
+      GROUP BY month
+      ORDER BY month
+    `).all(year);
+
+    return {
+      today_sales: todaySales,
+      month_sales: monthSales,
+      year_sales: yearSales,
+      top_products: topProducts,
+      monthly_sales_chart: monthlySalesChart
+    };
+  } catch (err) {
+    console.error("❌ Failed to get dashboard stats:", err);
+    return null;
+  }
+}
+
+function getRecentInvoices() {
+  try {
+    return db.prepare(`
+      SELECT id, invoice_no, customer_name, total, timestamp
+      FROM sales
+      ORDER BY timestamp DESC
+      LIMIT 10
+    `).all();
+  } catch (err) {
+    console.error("❌ Failed to get recent invoices:", err);
+    return [];
+  }
+}
+
+function getInvoiceDetails(id) {
+  try {
+    const sale = db.prepare(`SELECT * FROM sales WHERE id = ?`).get(id);
+    if (!sale) return null;
+
+    const items = db.prepare(`SELECT * FROM sale_items WHERE sale_id = ?`).all(id);
+    return { ...sale, items };
+  } catch (err) {
+    console.error("❌ Failed to get invoice details:", err);
+    return null;
+  }
+}
+
+function getInvoices({ page = 1, limit = 15, startDate, endDate, searchQuery = '' }) {
+  try {
+    const offset = (page - 1) * limit;
+    let whereClauses = [];
+    let params = [];
+
+    if (startDate) {
+      whereClauses.push(`date(timestamp) >= ?`);
+      params.push(startDate);
+    }
+    if (endDate) {
+      whereClauses.push(`date(timestamp) <= ?`);
+      params.push(endDate);
+    }
+    if (searchQuery) {
+      whereClauses.push(`(invoice_no LIKE ? OR customer_name LIKE ?)`)
+      params.push(`%${searchQuery}%`, `%${searchQuery}%`);
+    }
+
+    const where = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+
+    const countStmt = db.prepare(`SELECT COUNT(*) as total FROM sales ${where}`);
+    const { total } = countStmt.get(...params);
+
+    const dataStmt = db.prepare(`
+      SELECT id, invoice_no, customer_name, total, timestamp
+      FROM sales
+      ${where}
+      ORDER BY timestamp DESC
+      LIMIT ? OFFSET ?
+    `);
+    const data = dataStmt.all(...params, limit, offset);
+
+    return { data, total, page, limit };
+
+  } catch (err) {
+    console.error("❌ Failed to get invoices:", err);
+    return { data: [], total: 0, page: 1, limit };
+  }
+}
+
+function getInvoicesForExport({ startDate, endDate, searchQuery = '' }) {
+  try {
+    let whereClauses = [];
+    let params = [];
+
+    if (startDate) {
+      whereClauses.push(`date(s.timestamp) >= ?`);
+      params.push(startDate);
+    }
+    if (endDate) {
+      whereClauses.push(`date(s.timestamp) <= ?`);
+      params.push(endDate);
+    }
+    if (searchQuery) {
+      whereClauses.push(`(s.invoice_no LIKE ? OR s.customer_name LIKE ?)`);
+      params.push(`%${searchQuery}%`, `%${searchQuery}%`);
+    }
+
+    const where = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+
+    const stmt = db.prepare(`
+      SELECT
+        s.invoice_no,
+        s.timestamp,
+        s.customer_name,
+        s.customer_gstin,
+        (si.taxable_value + si.gst_amount) as total,
+        si.name as item_name,
+        si.quantity,
+        si.price,
+        si.gst_percent,
+        si.taxable_value,
+        si.gst_amount,
+        si.cgst,
+        si.sgst
+      FROM sales s
+      JOIN sale_items si ON s.id = si.sale_id
+      ${where}
+      ORDER BY s.timestamp ASC, s.invoice_no ASC
+    `);
+
+    const data = stmt.all(...params);
+    return { success: true, data };
+
+  } catch (err) {
+    console.error("❌ Failed to get invoices for export:", err);
+    return { success: false, data: [] };
+  }
+}
+
+/*
 // 🧠 Safe schema patch for store_settings (runs only if columns are missing)
 try {
   const storeCols = db.prepare(`PRAGMA table_info(store_settings)`).all().map(c => c.name);
@@ -296,9 +573,19 @@ try {
       console.log(`✅ Added column: ${col.name} to store_settings`);
     }
   });
+
+  // Add schema versioning
+  if (!storeCols.includes('schema_version')) {
+      db.prepare(`ALTER TABLE store_settings ADD COLUMN schema_version TEXT DEFAULT '1.0'`).run();
+      db.prepare(`UPDATE store_settings SET schema_version = '1.1' WHERE id = 1`).run();
+      console.log(`✅ Added and updated schema_version to 1.1`);
+  }
+
 } catch (err) {
   console.error("❌ Failed to patch store_settings schema:", err);
 }
+*/
+
 // ✅ Save or update the singleton store settings
 function saveStoreSettings(payload) {
   try {
@@ -306,7 +593,7 @@ function saveStoreSettings(payload) {
     if (exists.count > 0) {
       db.prepare(`
         UPDATE store_settings
-        SET store_name = ?, store_address = ?, store_subtitle = ?, store_phone = ?, store_gstin = ?, store_footer = ?, store_fssai = ?
+        SET store_name = ?, store_address = ?, store_subtitle = ?, store_phone = ?, store_gstin = ?, store_footer = ?, store_fssai = ?, label_printer_name = ?
         WHERE id = 1
       `).run(
         payload.store_name || '',
@@ -315,12 +602,13 @@ function saveStoreSettings(payload) {
         payload.store_phone || '',
         payload.store_gstin || '',
         payload.store_footer || '',
-        payload.store_fssai || ''
+        payload.store_fssai || '',
+        payload.label_printer_name || ''
       );
     } else {
       db.prepare(`
-        INSERT INTO store_settings (id, store_name, store_address, store_subtitle, store_phone, store_gstin, store_footer, store_fssai)
-        VALUES (1, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO store_settings (id, store_name, store_address, store_subtitle, store_phone, store_gstin, store_footer, store_fssai, label_printer_name)
+        VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         payload.store_name || '',
         payload.store_address || '',
@@ -328,7 +616,8 @@ function saveStoreSettings(payload) {
         payload.store_phone || '',
         payload.store_gstin || '',
         payload.store_footer || '',
-        payload.store_fssai || ''
+        payload.store_fssai || '',
+        payload.label_printer_name || ''
       );
     }
     return { success: true };
@@ -348,6 +637,192 @@ function getStoreSettings() {
     return null;
   }
 }
+
+// --- DATA DUMP & RESTORE ---
+
+// ✅ Export all critical data
+function exportDataDump() {
+    console.log('📦 Starting data export...');
+    try {
+        const products = db.prepare('SELECT * FROM products').all();
+        const sales = db.prepare('SELECT * FROM sales').all();
+        const sale_items = db.prepare('SELECT * FROM sale_items').all();
+        const store_settings = db.prepare('SELECT * FROM store_settings WHERE id = 1').get();
+        
+        const dump = { products, sales, sale_items, store_settings };
+        console.log('✅ Data export completed successfully.');
+        return { success: true, data: dump };
+    } catch (err) {
+        console.error('❌ Failed to export data:', err);
+        return { success: false, message: err.message };
+    }
+}
+
+// ✅ Import data from a dump file
+function importDataDump(dump) {
+    if (!dump || !dump.products || !dump.sales || !dump.sale_items || !dump.store_settings) {
+        return { success: false, message: "Invalid data dump object provided." };
+    }
+
+    const { products, sales, sale_items, store_settings } = dump;
+
+    const importTransaction = db.transaction(() => {
+        // 1. Clear existing data
+        db.prepare('DELETE FROM sale_items').run();
+        db.prepare('DELETE FROM sales').run();
+        db.prepare('DELETE FROM products').run();
+        db.prepare('DELETE FROM store_settings').run();
+        console.log('🗑️ Cleared existing data from tables.');
+
+        // 2. Insert products
+        const productStmt = db.prepare(`
+            INSERT INTO products (id, product_id, name, price, stock, category, sub_category, brand, model_name, unit, hsn_code, gst_percent, barcode_value)
+            VALUES (@id, @product_id, @name, @price, @stock, @category, @sub_category, @brand, @model_name, @unit, @hsn_code, @gst_percent, @barcode_value)
+        `);
+        for (const product of products) productStmt.run(product);
+        console.log(`Imported ${products.length} products.`);
+
+        // 3. Insert sales
+        const saleStmt = db.prepare(`
+            INSERT INTO sales (id, total, timestamp, invoice_no, payment_method, customer_name, customer_phone, customer_gstin)
+            VALUES (@id, @total, @timestamp, @invoice_no, @payment_method, @customer_name, @customer_phone, @customer_gstin)
+        `);
+        for (const sale of sales) saleStmt.run(sale);
+        console.log(`Imported ${sales.length} sales.`);
+
+        // 4. Insert sale items
+        const saleItemStmt = db.prepare(`
+            INSERT INTO sale_items (id, sale_id, product_id, name, price, quantity, hsn_code, gst_percent, taxable_value, gst_amount, cgst, sgst)
+            VALUES (@id, @sale_id, @product_id, @name, @price, @quantity, @hsn_code, @gst_percent, @taxable_value, @gst_amount, @cgst, @sgst)
+        `);
+        for (const item of sale_items) saleItemStmt.run(item);
+        console.log(`Imported ${sale_items.length} sale items.`);
+
+        // 5. Insert store settings
+        if (store_settings) {
+            const settingsStmt = db.prepare(`
+                INSERT INTO store_settings (id, store_name, store_address, store_subtitle, store_phone, store_gstin, store_footer, store_fssai, schema_version)
+                VALUES (@id, @store_name, @store_address, @store_subtitle, @store_phone, @store_gstin, @store_footer, @store_fssai, @schema_version)
+            `);
+            settingsStmt.run(store_settings);
+            console.log('Imported store settings.');
+        }
+    });
+
+    try {
+        importTransaction();
+        console.log('✅ Data import transaction completed successfully.');
+        return { success: true, message: 'Data imported successfully.' };
+    } catch (err) {
+        console.error("❌ Data import failed:", err);
+        return { success: false, message: err.message };
+    }
+}
+
+function importProductsFromCSV(rows, generateBarcode) {
+  if (!Array.isArray(rows)) {
+    return { success: false, message: "Invalid input: Expected an array of rows." };
+  }
+
+  let imported = 0;
+  let skipped = 0;
+
+  const insertStmt = db.prepare(`
+    INSERT OR REPLACE INTO products (
+      product_id,
+      name,
+      category,
+      sub_category,
+      brand,
+      model_name,
+      unit,
+      price,
+      gst_percent,
+      hsn_code,
+      barcode_value,
+      stock
+    ) VALUES (
+      @product_id,
+      @name,
+      @category,
+      @sub_category,
+      @brand,
+      @model_name,
+      @unit,
+      @price,
+      @gst_percent,
+      @hsn_code,
+      @barcode_value,
+      @stock
+    )
+  `);
+
+  const importMany = db.transaction((parsedRows) => {
+    for (const product of parsedRows) {
+      insertStmt.run(product);
+    }
+  });
+
+  try {
+    const productsToInsert = [];
+
+    for (const row of rows) {
+      const name = row.name?.trim();
+      const category = row.category?.trim();
+      const productId = row.product_id?.trim();
+      
+      const sellingPrice = parseFloat(row.price_selling);
+      const taxRate = parseFloat(row.tax_rate);
+      
+      if (!productId || !name || !category || isNaN(sellingPrice) || isNaN(taxRate)) {
+        skipped++;
+        continue;
+      }
+
+      const stock = parseInt(row.stock, 10);
+
+      const newProduct = {
+        product_id: productId,
+        name: name,
+        category: category,
+        sub_category: row.sub_category?.trim() || null,
+        brand: row.brand?.trim() || null,
+        model_name: row.model_name?.trim() || null,
+        unit: row.unit?.trim() || null,
+        price: sellingPrice,
+        gst_percent: taxRate,
+        hsn_code: row.hsn_code?.trim() || null,
+        stock: !isNaN(stock) && stock >= 0 ? stock : 0,
+      };
+      newProduct.barcode_value = generateBarcode(newProduct);
+
+      productsToInsert.push(newProduct);
+      imported++;
+    }
+
+    if (productsToInsert.length > 0) {
+      importMany(productsToInsert);
+    }
+
+    return { success: true, imported, skipped };
+
+  } catch (err) {
+    console.error("❌ Failed to import products from CSV:", err);
+    return { success: false, message: err.message || "An unknown error occurred during the transaction." };
+  }
+}
+
+function getProductById(id) {
+  try {
+    const stmt = db.prepare('SELECT * FROM products WHERE id = ?');
+    const product = stmt.get(id);
+    return product;
+  } catch (err) {
+    console.error("❌ Failed to get product by ID:", err);
+    return null;
+  }
+}
+
 module.exports = {
   db,
   getAllProducts,
@@ -356,6 +831,14 @@ module.exports = {
   updateProduct,
   saveSale,
   saveStoreSettings,
-  getStoreSettings
+  getStoreSettings,
+  getDashboardStats,
+  getRecentInvoices,
+  getInvoiceDetails,
+  getInvoices,
+  getInvoicesForExport,
+  exportDataDump,
+  importDataDump,
+  importProductsFromCSV,
+  getProductById
 };
-

@@ -25,7 +25,24 @@ module.exports = {
     'font-sans'
   ],
   theme: {
-    extend: {},
+    extend: {
+      colors: {
+        primary: {
+          DEFAULT: '#4F46E5', // Indigo 600
+          dark: '#4338CA',    // Indigo 700
+          light: '#6366F1',   // Indigo 500
+        },
+        secondary: {
+          DEFAULT: '#6B7280', // Gray 500
+          light: '#D1D5DB',   // Gray 300
+          dark: '#4B5563',    // Gray 700
+        },
+        success: '#10B981',   // Green 500
+        danger: '#EF4444',    // Red 500
+        warning: '#F59E0B',   // Amber 500
+        info: '#3B82F6',      // Blue 500
+      },
+    },
   },
   plugins: [],
 }

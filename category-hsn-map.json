@@ -1,6 +1,22 @@
 {
-  "Cricket": { "hsn": "9506", "gst": 12 },
-  "Gym Gear": { "hsn": "9506", "gst": 12 },
-  "Supplements": { "hsn": "2106", "gst": 18 },
-  "Fitness Accessories": { "hsn": "9506", "gst": 12 }
+  "Cricket": {
+    "hsn": "9506",
+    "gst": 12
+  },
+  "Gym Gear": {
+    "hsn": "9506",
+    "gst": 12
+  },
+  "Supplements": {
+    "hsn": "2106",
+    "gst": 18
+  },
+  "Fitness Accessories": {
+    "hsn": "9506",
+    "gst": 12
+  },
+  "Tennis": {
+    "hsn": "",
+    "gst": ""
+  }
 }

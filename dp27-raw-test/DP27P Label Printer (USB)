@@ -1,0 +1,6 @@
+SIZE 50 mm,25 mm
+GAP 3 mm,0
+CLS
+TEXT 10,10,"3",0,1,1,"Hello"
+PRINT 1
+
