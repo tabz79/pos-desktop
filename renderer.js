@@ -1,13 +1,8 @@
 <<<<<<< HEAD
-<<<<<<< Updated upstream
-=======
-=======
-<<<<<<< HEAD
 =======
 <<<<<<< Updated upstream
 =======
 >>>>>>> 0d82d30 (fix(cart-ui): restore typing in cart overlay via early-return focus guard (scanner unaffected))
->>>>>>> restore/v1.4.5
 
 // --- START: NEW BARCODE SCANNER IMPLEMENTATION ---
 document.addEventListener("DOMContentLoaded", () => {
@@ -18,9 +13,6 @@ document.addEventListener("DOMContentLoaded", () => {
   window.addEventListener('keydown', (e) => {
 <<<<<<< HEAD
 =======
-<<<<<<< HEAD
-=======
->>>>>>> restore/v1.4.5
 // --- BEGIN SAFE TYPING GUARD (production) ---
 const t = e.target;
 if (
@@ -35,10 +27,7 @@ if (
   return; // allow normal typing inside real form controls
 }
 // --- END SAFE TYPING GUARD ---
-<<<<<<< HEAD
-=======
 >>>>>>> 0d82d30 (fix(cart-ui): restore typing in cart overlay via early-return focus guard (scanner unaffected))
->>>>>>> restore/v1.4.5
     // 1. Only run logic if we are on the Sales tab.
     // We check this via a DOM element unique to the sales view.
     const salesViewActive = !!document.getElementById('salesProductList');
@@ -161,13 +150,9 @@ function generateBarcode(product) {
 
 
 <<<<<<< HEAD
->>>>>>> Stashed changes
-=======
-<<<<<<< HEAD
 =======
 >>>>>>> Stashed changes
 >>>>>>> 0d82d30 (fix(cart-ui): restore typing in cart overlay via early-return focus guard (scanner unaffected))
->>>>>>> restore/v1.4.5
 // ✅ POS Renderer Script with Live Stock Update, Quantity Control, Print Layout, and Business Profile Support
 
 function debounce(func, delay) {
