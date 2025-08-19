@@ -111,15 +111,17 @@ let barcodeCounter = 0;
 
 function generateBarcode(product) {
   try {
-    const category = (product.category || 'UNK').substring(0, 3).toUpperCase().padEnd(3, 'X');
-    const name = (product.name || 'NA').substring(0, 2).toUpperCase().padEnd(2, 'X');
-    const subCategory = (product.sub_category || '_').substring(0, 1).toUpperCase();
-    const brand = (product.brand || 'XX').substring(0, 2).toUpperCase().padEnd(2, 'X');
-    const model = (product.model_name ? product.model_name.split('-')[0] : 'ZZ').substring(0, 2).toUpperCase().padEnd(2, 'Z');
+    const category = (product.category || 'UNK').substring(0, 2).toUpperCase().padEnd(2, 'X'); // 2 chars
+    // const name = (product.name || 'NA').substring(0, 2).toUpperCase().padEnd(2, 'X'); // Removed
+    const subCategory = (product.sub_category || '_').substring(0, 1).toUpperCase(); // 1 char
+    const brand = (product.brand || 'XX').substring(0, 2).toUpperCase().padEnd(2, 'X'); // 2 chars
+    const model = (product.model_name ? product.model_name.split('-')[0] : 'ZZ').substring(0, 2).toUpperCase().padEnd(2, 'Z'); // 2 chars
+    // Ensure model is always 2 chars, even if split result is shorter or empty
 
-    const counter = (++barcodeCounter).toString().padStart(5, '0');
+    const counter = (++barcodeCounter).toString().padStart(4, '0'); // 4 digits
 
-    return `${category}${name}${subCategory}${brand}${counter}${model}`;
+    // New order: category (2) + subCategory (1) + brand (2) + counter (4) + model (2) = 11 chars
+    return `${category}${subCategory}${brand}${counter}${model}`;
   } catch (error) {
     console.error("Failed to generate barcode for", product.name, error);
     return "ERROR";
@@ -2849,120 +2851,100 @@ document.querySelectorAll(".nav-btn").forEach((btn) => {
 };
 
 async function printLabel(productId) {
-    const quantity = parseInt(document.getElementById('label-quantity').value) || 1;
-    const size = document.getElementById('label-size').value.split('x');
-    const widthMm = parseInt(size[0]);
-    const heightMm = parseInt(size[1]);
+  console.log(`[DEBUG PRINT] printLabel function entered with productId: ${productId}`);
+  const product = await window.api.getProductById(productId);
+  if (!product) {
+    console.log('[DEBUG PRINT] Exit: Product not found after fetching with ID.');
+    showToast("❌ Could not find product to print.", "error");
+    return;
+  }
 
-    // === BEGIN FIX: consistent effective height to prevent extra feed ===
-    const SHRINK_MM = 2; // If still feeds, try 2.5; if content too tight, try 1
-    const effectiveHeightMm = heightMm - SHRINK_MM;
-    const pageWidthMicrons  = widthMm * 1000;
-    const pageHeightMicrons = effectiveHeightMm * 1000;
-    // === END FIX ===
+  const quantity = parseInt(document.getElementById('label-quantity').value, 10);
+  const labelSize = document.getElementById('label-size').value;
+  console.log(`[DEBUG PRINT] Retrieved from DOM - quantity: ${quantity}, labelSize: '${labelSize}'`);
 
-    // === BEGIN: content offset (do not change anything above/below except where told) ===
-    const CONTENT_TOP_OFFSET_MM = 2; // move the whole label content down by 2mm
-    // === END: content offset ===
+  const [widthMm, heightMm] = labelSize.split('x').map(Number);
+  console.log(`[DEBUG PRINT] Parsed dimensions - widthMm: ${widthMm}, heightMm: ${heightMm}`);
 
-    const product = await window.api.getProductById(productId);
-    if (!product) {
-        showToast('Cannot print label: Product not found.', 'error');
-        return;
-    }
+  console.log('[DEBUG PRINT] Validating quantity...');
+  if (isNaN(quantity) || quantity <= 0) {
+    console.log('[DEBUG PRINT] Exit: Quantity validation FAILED.');
+    showToast("❌ Please enter a valid quantity.", "error");
+    return;
+  }
+  console.log('[DEBUG PRINT] Quantity validation PASSED.');
 
-    const storeSettings = await window.api.getStoreSettings();
-    const barcodeValue = product.barcode_value || product.product_id;
+  const storeSettings = await window.api.getStoreSettings();
 
-    const canvas = document.createElement('canvas');
-    try {
-        // Generate barcode WITHOUT text. Text will be rendered manually in HTML.
-        bwipjs.toCanvas(canvas, {
-            bcid: 'code128',
-            text: barcodeValue,
-            scale: 3,      // Increased scale for sharpness
-            height: 6,
-            includetext: false, // IMPORTANT: Do not include text in the image
-        });
-    } catch (e) {
-        console.error('Barcode generation failed:', e);
-        showToast('❌ Error creating barcode.', 'error');
-        return;
-    }
+  const canvas = document.createElement('canvas');
+  let barcodeBase64 = '';
+  try {
+    bwipjs.toCanvas(canvas, {
+      bcid: 'code128',
+      text: product.barcode_value || product.product_id,
+      scale: 3,
+      includetext: true,
+    });
+    barcodeBase64 = canvas.toDataURL('image/png').split(',')[1];
+    console.log(`[DEBUG PRINT] Barcode generated successfully as PNG data URL.`);
+  } catch (e) {
+    console.log('[DEBUG PRINT] Exit: Barcode generation FAILED.');
+    console.error('Failed to generate barcode for printing:', e);
+    showToast('❌ Error creating barcode for print.', 'error');
+    return;
+  }
 
-    const barcodeBase64 = canvas.toDataURL('image/png');
+  const labelHtml = `
+    <html>
+      <head>
+        <style>
+          body { margin:0; padding:0; font-family: Arial, sans-serif; font-size:10pt; }
+          .store-name { font-size:11pt; font-weight:bold; text-align:center; margin-bottom:1mm; }
+          .product-name { font-size:10pt; text-align:center; margin-bottom:1mm; }
+          .barcode { text-align:center; margin:1mm 0; }
+          .mrp { font-size:10pt; text-align:center; font-weight:bold; }
+		  @page { margin: 0; size: ${widthMm}mm ${heightMm}mm; }
+          body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            font-size: 8pt;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            width: ${widthMm}mm;
+            height: ${heightMm}mm;
+            overflow: hidden;
+            box-sizing: border-box;
+            transform: translate(-9mm, -1mm);
+          }
+        </style>
+      </head>
+      <body>
+        <div class="store-name">${storeSettings.store_name || ''}</div>
+        <div class="product-name">${product.name}</div>
+        <div class="barcode">
+          <img src="data:image/png;base64,${barcodeBase64}" style="width:38mm; height:auto;" />
+        </div>
+        <div class="mrp">MRP: ₹${product.price}</div>
+      </body>
+    </html>
+  `;
 
-    const labelHtml = `
-      <html>
-        <head>
-          <style>
-            @page { margin: 0; size: ${widthMm}mm ${effectiveHeightMm}mm; }
-            body {
-              margin: 0;
-              padding: 0;
-              font-family: Arial, sans-serif;
-              width: ${widthMm}mm;
-              height: ${effectiveHeightMm}mm;
-              box-sizing: border-box;
-              overflow: hidden;
-              transform: translate(-9mm, 0mm); /* Revert body transform Y to 0mm */
-            }
-            .label-container {
-              padding-top: 2.2mm; /* +2mm breathing room */
-              box-sizing: border-box; /* Ensure padding is included in the element's total width */
-              text-align: center;
-            }
-            .store-name { font-size: 7pt; font-weight: bold; line-height: 1; margin: 0; }
-            .product-name {
-              font-size: 6.5pt;
-              line-height: 1;
-              margin-top: 0.3mm;
-              white-space: nowrap;
-              overflow: hidden;
-              text-overflow: ellipsis;
-              text-align: center;           /* center visually, not left */
-              padding: 0 1.5mm;             /* symmetric padding */
-              box-sizing: border-box;       /* padding counts in width */
-              max-width: 100%;              /* respect container width */
-              direction: ltr;               /* ensure left-to-right clipping behavior */
-              /* Do NOT add any translateX or negative margins here. */
-            }
-.barcode-img {
-  width: 32mm;
-  height: 5mm;
-  margin-top: 0.3mm;
-  margin-left: 2mm; /* safe gap from left edge */
-}
-            .barcode-text { font-size: 6pt; line-height: 1; margin: 0; }
-            .mrp { font-size: 7pt; font-weight: bold; line-height: 1; margin: 0; margin-top: 0.3mm; }
-          </style>
-        </head>
-        <body>
-          <div class="label-container">
-            <div class="store-name">${storeSettings?.store_name || 'My Store'}</div>
-            <div class="product-name">${product.name}</div>
-            <img class="barcode-img" src="${barcodeBase64}" />
-            <div class="barcode-text">${barcodeValue}</div>
-            <div class="mrp">MRP: ₹${product.price}</div>
-          </div>
-        </body>
-      </html>
-    `;
+  const result = await window.api.printLabel({
+    html: labelHtml,
+    width: widthMm * 1000, // to microns
+    height: heightMm * 1000, // to microns
+    copies: quantity,
+  });
 
-    for (let i = 0; i < quantity; i++) {
-        const result = await window.api.printLabel({
-            html: labelHtml,
-            width: pageWidthMicrons,
-            height: pageHeightMicrons,
-        });
-
-        if (result.success) {
-            showToast(`✅ Label ${i + 1}/${quantity} sent to printer.`);
-        } else {
-            showToast(`❌ Print failed: ${result.message}`, 'error');
-            break;
-        }
-    }
+  if (result.success) {
+    showToast(`✅ ${quantity} label(s) sent to printer.`);
+  } else {
+    showToast(`❌ ${result.message}`, 'error');
+  }
 }
 });
 

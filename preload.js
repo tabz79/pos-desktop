@@ -36,9 +36,14 @@ contextBridge.exposeInMainWorld('api', {
   regenerateBarcodes: () => ipcRenderer.invoke('regenerate-barcodes'),
   getProductById: (id) => ipcRenderer.invoke('get-product-by-id', id),
   printLabel: (options) => ipcRenderer.invoke('print-label', options),
+  testPrintLabel: (printerName) => ipcRenderer.invoke('test-print-label', printerName),
+  getPrinters: () => ipcRenderer.invoke('get-printers'),
   printInvoice: (data) => {
     console.log('Preload: Sending print-invoice via ipcRenderer.send.');
     ipcRenderer.send('print-invoice', data);
   },
+  findProductByBarcode: (code) => ipcRenderer.invoke('find-product-by-barcode', code),
+
+  onBarcodeScanned: (callback) => ipcRenderer.on('barcode-scanned', (event, barcode) => callback(barcode)),
   // ...leave other api functions untouched
 });

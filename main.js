@@ -4,19 +4,7 @@ const fs = require('fs');
 const ExcelJS = require('exceljs');
 const { printInvoice } = require('./printer');
 
-let tailwindCssContent;
-try {
-    const tailwindCssPath = path.join(app.getAppPath(), 'resources', 'tailwind.css');
-    tailwindCssContent = fs.readFileSync(tailwindCssPath, 'utf8');
-} catch (error) {
-    if (error.code === 'ENOENT') {
-        console.warn(`⚠️ Warning: Tailwind CSS file not found at ${error.path}. Printing may be unstyled. Setting tailwindCssContent to empty string.`);
-        tailwindCssContent = ''; // Set to empty string if file is missing
-    } else {
-        console.error(`❌ Error loading Tailwind CSS: ${error.message}. Setting tailwindCssContent to empty string.`);
-        tailwindCssContent = ''; // Set to empty string for other errors as well
-    }
-}
+
 
 console.log("▶️ Electron app starting...");
 
@@ -90,15 +78,17 @@ let barcodeCounter = 0;
 
 function generateBarcode(product) {
   try {
-    const category = (product.category || 'UNK').substring(0, 3).toUpperCase().padEnd(3, 'X');
-    const name = (product.name || 'NA').substring(0, 2).toUpperCase().padEnd(2, 'X');
-    const subCategory = (product.sub_category || '_').substring(0, 1).toUpperCase();
-    const brand = (product.brand || 'XX').substring(0, 2).toUpperCase().padEnd(2, 'X');
-    const model = (product.model_name ? product.model_name.split('-')[0] : 'ZZ').substring(0, 2).toUpperCase().padEnd(2, 'Z');
+    const category = (product.category || 'UNK').substring(0, 2).toUpperCase().padEnd(2, 'X'); // 2 chars
+    // const name = (product.name || 'NA').substring(0, 2).toUpperCase().padEnd(2, 'X'); // Removed
+    const subCategory = (product.sub_category || '_').substring(0, 1).toUpperCase(); // 1 char
+    const brand = (product.brand || 'XX').substring(0, 2).toUpperCase().padEnd(2, 'X'); // 2 chars
+    const model = (product.model_name ? product.model_name.split('-')[0] : 'ZZ').substring(0, 2).toUpperCase().padEnd(2, 'Z'); // 2 chars
+    // Ensure model is always 2 chars, even if split result is shorter or empty
 
-    const counter = (++barcodeCounter).toString().padStart(5, '0');
+    const counter = (++barcodeCounter).toString().padStart(4, '0'); // 4 digits
 
-    return `${category}${name}${subCategory}${brand}${counter}${model}`;
+    // New order: category (2) + subCategory (1) + brand (2) + counter (4) + model (2) = 11 chars
+    return `${category}${subCategory}${brand}${counter}${model}`; 
   } catch (error) {
     console.error("Failed to generate barcode for", product.name, error);
     return "ERROR";
@@ -262,7 +252,8 @@ app.whenReady().then(async () => {
             store_phone,
             store_gstin,
             store_footer,
-            store_fssai
+            store_fssai,
+            label_printer_name
           FROM store_settings WHERE id = 1
         `).get();
 
@@ -273,7 +264,8 @@ app.whenReady().then(async () => {
           store_phone: "",
           store_gstin: "",
           store_footer: "",
-          store_fssai: ""
+          store_fssai: "",
+          label_printer_name: ""
         };
       } catch (err) {
         console.error("❌ Failed to fetch store settings:", err);
@@ -284,7 +276,8 @@ app.whenReady().then(async () => {
           store_phone: "",
           store_gstin: "",
           store_footer: "",
-          store_fssai: ""
+          store_fssai: "",
+          label_printer_name: ""
         };
       }
     });
@@ -296,10 +289,10 @@ app.whenReady().then(async () => {
         dbAPI.db.prepare(`
           INSERT INTO store_settings ( 
             id, store_name, store_subtitle, store_address,
-            store_phone, store_gstin, store_footer, store_fssai
+            store_phone, store_gstin, store_footer, store_fssai, label_printer_name
           ) VALUES ( 
             1, @store_name, @store_subtitle, @store_address,
-            @store_phone, @store_gstin, @store_footer, @store_fssai
+            @store_phone, @store_gstin, @store_footer, @store_fssai, @label_printer_name
           )
           ON CONFLICT(id) DO UPDATE SET
             store_name = excluded.store_name,
@@ -308,7 +301,8 @@ app.whenReady().then(async () => {
             store_phone = excluded.store_phone,
             store_gstin = excluded.store_gstin,
             store_footer = excluded.store_footer,
-            store_fssai = excluded.store_fssai
+            store_fssai = excluded.store_fssai,
+            label_printer_name = excluded.label_printer_name
         `).run(settings);
 
         return { success: true };
@@ -547,25 +541,120 @@ app.whenReady().then(async () => {
       return await getNextInvoiceNumber();
     });
 
-    ipcMain.handle('print-label', (event, { html, width, height }) => {
+    ipcMain.handle('get-printers', async () => {
+      const printers = await mainWindow.webContents.getPrintersAsync();
+      return printers;
+    });
+
+    /**
+     * Core print execution function with strict printer validation.
+     * @param {string} deviceName - The exact name of the target printer.
+     * @param {string} html - The HTML content to print.
+     * @param {number} width - The width of the label in microns.
+     * @param {number} height - The height of the label in microns.
+     * @returns {Promise<{success: boolean, message: string}>}
+     */
+    async function executePrint(deviceName, html, width, height) {
+      if (!deviceName) {
+        return { success: false, message: 'No printer name configured.' };
+      }
+
       const printWindow = new BrowserWindow({ show: false });
 
-      printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+      try {
+        const printers = await mainWindow.webContents.getPrintersAsync();
+        const printer = printers.find(p => p.name.toLowerCase() === deviceName.toLowerCase());
 
-      printWindow.webContents.on('did-finish-load', () => {
-        printWindow.webContents.print({
+        if (!printer) {
+          console.warn(`⚠️ Print job rejected: Printer "${deviceName}" not found or is offline.`);
+          return { success: false, message: `Configured label printer '${deviceName}' not found or is offline.` };
+        }
+
+        await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+        
+        const printOptions = {
           silent: true,
           printBackground: true,
-          pageSize: {
-            width: width, // in microns
-            height: height, // in microns
-          },
+          deviceName: printer.name,
+          pageSize: { width, height },
           margins: { marginType: 'none' },
-        }, (success, errorType) => {
-          if (!success) console.log(errorType);
-          printWindow.close();
+        };
+
+        // Use the callback-based print method wrapped in a Promise for reliable results
+        const result = await new Promise((resolve, reject) => {
+          setTimeout(() => { // Add setTimeout here
+            printWindow.webContents.print(printOptions, (success, failureReason) => {
+              if (success) {
+                console.log(`✅ Print job sent successfully to printer: ${printer.name}`);
+                resolve({ success: true });
+              } else {
+                console.error(`❌ Print job failed for ${printer.name}: ${failureReason}`);
+                resolve({ success: false, message: failureReason });
+              }
+            });
+          }, 150); // 150ms delay
         });
-      });
+
+        return result;
+
+      } catch (error) {
+        console.error('❌ Failed to execute print job:', error);
+        return { success: false, message: error.message };
+      } finally {
+        // Ensure the print window is always closed
+        if (!printWindow.isDestroyed()) {
+          printWindow.close();
+        }
+      }
+    }
+
+    ipcMain.handle('print-label', async (event, { html, width, height }) => {
+      // Fetch store settings to get the designated label printer
+      const settings = dbAPI.db.prepare('SELECT label_printer_name FROM store_settings WHERE id = 1').get();
+      const deviceName = settings?.label_printer_name;
+
+      return await executePrint(deviceName, html, width, height);
+    });
+
+    ipcMain.handle('test-print-label', async (event, deviceName) => {
+      const widthMm = 50;
+      const heightMm = 25;
+      const now = new Date().toLocaleString();
+      const testHtml = `
+        <html>
+          <head>
+            <style>
+              @page { margin: 0; size: ${widthMm}mm ${heightMm}mm; }
+              body {
+                margin: 0;
+                padding: 0;
+                font-family: Arial, sans-serif;
+                font-size: 8pt;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                align-items: center;
+                text-align: center;
+                width: ${widthMm}mm;
+                height: ${heightMm}mm;
+                box-sizing: border-box;
+                transform: translate(-9mm, -3mm);
+              }
+            </style>
+          </head>
+          <body>
+            <div>TEST LABEL</div>
+            <div>${now}</div>
+          </body>
+        </html>
+      `;
+      
+      return await executePrint(
+        deviceName, 
+        testHtml, 
+        widthMm * 1000, 
+        heightMm * 1000
+      );
     });
 
     // --- PATCHED print-invoice handler ---
@@ -595,5 +684,40 @@ app.whenReady().then(async () => {
     } catch (err) {
       console.error("❌ Failed to register data dump handlers:", err);
     }
+
+    ipcMain.handle('find-product-by-barcode', async (_evt, rawCode) => {
+      if (!dbAPI || !rawCode) {
+        return null;
+      }
+      try {
+        const normalizedCode = rawCode.trim().toUpperCase();
+        const query = `
+          SELECT id, name, price, product_id, barcode_value 
+          FROM products 
+          WHERE UPPER(REPLACE(barcode_value, ' ', '')) = ? OR UPPER(REPLACE(product_id, ' ', '')) = ?
+        `;
+        const product = dbAPI.db.prepare(query).get(normalizedCode, normalizedCode);
+        return product || null;
+      } catch (error) {
+        console.error('❌ Failed to find product by barcode:', error);
+        return null;
+      }
+    });
+
+    ipcMain.on('barcode-scan-request', async (event, barcode) => {
+      if (!dbAPI) {
+        event.sender.send('barcode-scan-response', null);
+        return;
+      }
+      try {
+        const product = dbAPI.db.prepare(
+          'SELECT * FROM products WHERE barcode_value = ? OR product_id = ?'
+        ).get(barcode, barcode);
+        event.sender.send('barcode-scan-response', product || null);
+      } catch (error) {
+        console.error('Error finding product by barcode:', error);
+        event.sender.send('barcode-scan-response', null);
+      }
+    });
   }
 });

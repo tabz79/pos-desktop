@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <title>Label Printer Test</title>
+    <style>
+      /* Label print area */
+      @page {
+        size: 50mm 25mm;
+        margin: 0;
+      }
+      html, body {
+        margin: 0;
+        padding: 0;
+      }
+
+      /* Screen UI styles */
+      body {
+        font-family: Arial, sans-serif;
+        padding: 20px;
+      }
+      h1 {
+        margin: 0 0 10px 0;
+      }
+
+      /* Label template styles */
+      .label {
+        width: 50mm;
+        height: 25mm;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        text-align: center;
+        font-family: Arial, sans-serif;
+      }
+      .label h1 {
+        font-size: 11pt; /* scaled to fit horizontally */
+        margin: 0;
+      }
+      .label p {
+        font-size: 9pt;
+        margin: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Label Printer Test</h1>
+    <button id="print-button">Print Label</button>
+
+    <!-- Hidden label template (not rendered on screen) -->
+    <template id="label-template">
+      <div class="label">
+        <h1>Test Label</h1>
+        <p>50x25mm test</p>
+      </div>
+    </template>
+
+    <script src="./renderer.js"></script>
+  </body>
+</html>

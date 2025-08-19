@@ -139,9 +139,24 @@ try {
     CREATE TABLE IF NOT EXISTS store_settings (
       id INTEGER PRIMARY KEY CHECK (id = 1),
       store_name TEXT,
-      store_address TEXT
+      store_address TEXT,
+      label_printer_name TEXT
     )
   `).run();
+
+  // Migration: Add label_printer_name column if missing
+  try {
+    const cols = db.prepare("PRAGMA table_info(store_settings)").all();
+    const hasLabelPrinterName = cols.some(col => col.name === "label_printer_name");
+    if (!hasLabelPrinterName) {
+      db.prepare("ALTER TABLE store_settings ADD COLUMN label_printer_name TEXT").run();
+      console.log("✅ label_printer_name column added to store_settings table.");
+    } else {
+      console.log("🟡 label_printer_name column already exists in store_settings.");
+    }
+  } catch (err) {
+    console.error("❌ Failed to check or add label_printer_name column:", err.message);
+  }
 
   // ✅ Create invoice_counter table
   db.prepare(`
@@ -578,7 +593,7 @@ function saveStoreSettings(payload) {
     if (exists.count > 0) {
       db.prepare(`
         UPDATE store_settings
-        SET store_name = ?, store_address = ?, store_subtitle = ?, store_phone = ?, store_gstin = ?, store_footer = ?, store_fssai = ?
+        SET store_name = ?, store_address = ?, store_subtitle = ?, store_phone = ?, store_gstin = ?, store_footer = ?, store_fssai = ?, label_printer_name = ?
         WHERE id = 1
       `).run(
         payload.store_name || '',
@@ -587,12 +602,13 @@ function saveStoreSettings(payload) {
         payload.store_phone || '',
         payload.store_gstin || '',
         payload.store_footer || '',
-        payload.store_fssai || ''
+        payload.store_fssai || '',
+        payload.label_printer_name || ''
       );
     } else {
       db.prepare(`
-        INSERT INTO store_settings (id, store_name, store_address, store_subtitle, store_phone, store_gstin, store_footer, store_fssai)
-        VALUES (1, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO store_settings (id, store_name, store_address, store_subtitle, store_phone, store_gstin, store_footer, store_fssai, label_printer_name)
+        VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         payload.store_name || '',
         payload.store_address || '',
@@ -600,7 +616,8 @@ function saveStoreSettings(payload) {
         payload.store_phone || '',
         payload.store_gstin || '',
         payload.store_footer || '',
-        payload.store_fssai || ''
+        payload.store_fssai || '',
+        payload.label_printer_name || ''
       );
     }
     return { success: true };
