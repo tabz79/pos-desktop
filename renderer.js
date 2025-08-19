@@ -1,3 +1,149 @@
+<<<<<<< Updated upstream
+=======
+
+// --- START: NEW BARCODE SCANNER IMPLEMENTATION ---
+document.addEventListener("DOMContentLoaded", () => {
+  const SCANNER_TIMEOUT = 50; // ms between keystrokes
+  let barcodeBuffer = '';
+  let lastKeyTime = 0;
+
+  window.addEventListener('keydown', (e) => {
+// --- BEGIN SAFE TYPING GUARD (production) ---
+const t = e.target;
+if (
+  (t && (t.isContentEditable ||
+         t.tagName === 'INPUT' ||
+         t.tagName === 'TEXTAREA' ||
+         t.tagName === 'SELECT')) ||
+  (document.activeElement &&
+   (document.activeElement.isContentEditable ||
+    ['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)))
+) {
+  return; // allow normal typing inside real form controls
+}
+// --- END SAFE TYPING GUARD ---
+    // 1. Only run logic if we are on the Sales tab.
+    // We check this via a DOM element unique to the sales view.
+    const salesViewActive = !!document.getElementById('salesProductList');
+    if (!salesViewActive) {
+      barcodeBuffer = ''; // Reset buffer when not on sales tab
+      return;
+    }
+
+    // 2. Prevent default browser action for scanner-like keys.
+    // This is the core of the fix. It stops the browser from interpreting
+    // the scan as navigation or button clicks.
+    if (e.key === 'Enter' || e.key.length === 1) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
+    const now = Date.now();
+    // Reset buffer if keys are typed too slowly
+    if (now - lastKeyTime > SCANNER_TIMEOUT) {
+      barcodeBuffer = '';
+    }
+
+    if (e.key === 'Enter') {
+      if (barcodeBuffer.length > 0) {
+        console.log(`[SCAN] Detected barcode: ${barcodeBuffer}`);
+        // Use the 'send' method exposed on the context bridge to talk to main.js
+        window.postMessage({ type: 'ipc-send', channel: 'barcode-scan-request', args: [barcodeBuffer] });
+      }
+      barcodeBuffer = ''; // Clear buffer after Enter
+    } else if (e.key.length === 1) {
+      // It's a character key, add it to the buffer.
+      barcodeBuffer += e.key;
+    }
+    
+    lastKeyTime = now;
+  }, true); // Use CAPTURE phase to get the event before other listeners.
+});
+
+// New listener for the response from main process
+window.addEventListener('message', (event) => {
+  if (event.source === window && event.data.type === 'ipc-reply' && event.data.channel === 'barcode-scan-response') {
+    const product = event.data.args[0];
+    if (product) {
+      console.log('[SCAN] Received product:', product.name);
+      // This addToCart function is defined later in this file.
+      // It correctly handles adding a new item or incrementing quantity.
+      addToCart(product.id, product.name, product.price);
+      showToast(`✅ Added ${product.name} from scan`);
+    } else {
+      console.log('[SCAN] Product not found for scanned barcode.');
+      showToast('❌ Product not found by scan.');
+    }
+  }
+});
+// --- END: NEW BARCODE SCANNER IMPLEMENTATION ---
+
+/**
+ * Generates a product_id and barcode_value based on product details.
+ * This function is pure and can be reused for bulk imports.
+
+ * It replicates the user's Excel formula logic.
+ * @param {object} params
+ * @param {string} [params.category=''] - Product category
+ * @param {string} [params.name=''] - Product name
+ * @param {string} [params.brand=''] - Brand name
+ * @param {string} [params.model_name=''] - Model name
+ * @returns {{product_id: string, barcode_value: string}}
+ */
+
+// Global state for invoice navigation
+window.currentInvoicePageData = [];
+window.currentInvoicePageIndex = -1;
+
+
+
+function parsePriceFromModel(model_name = '') {
+  if (!model_name) return null;
+  model_name = model_name.trim();
+
+  // Regex for formats like 2k, 1.5h, 10t (at the end of a word or string)
+  const multiplierRegex = /(\d+\.?\d*)\s?([kht])\b/i;
+  const multiplierMatch = model_name.match(multiplierRegex);
+  if (multiplierMatch && multiplierMatch[1] && multiplierMatch[2]) {
+    const value = parseFloat(multiplierMatch[1]);
+    const multiplier = multiplierMatch[2].toLowerCase();
+    const multipliers = { k: 1000, h: 200, t: 20 };
+    if (multipliers[multiplier]) {
+      return value * multipliers[multiplier];
+    }
+  }
+
+  // Regex for formats like ₹749, Rs.749, Rs 749
+  const currencyRegex = /(?:₹|Rs\.?)\s?(\d+\.?\d*)/;
+  const currencyMatch = model_name.match(currencyRegex);
+  if (currencyMatch && currencyMatch[1]) {
+    return parseFloat(currencyMatch[1]);
+  }
+
+  return null;
+}
+
+let barcodeCounter = 0;
+
+function generateBarcode(product) {
+  try {
+    const category = (product.category || 'UNK').substring(0, 3).toUpperCase().padEnd(3, 'X');
+    const name = (product.name || 'NA').substring(0, 2).toUpperCase().padEnd(2, 'X');
+    const subCategory = (product.sub_category || '_').substring(0, 1).toUpperCase();
+    const brand = (product.brand || 'XX').substring(0, 2).toUpperCase().padEnd(2, 'X');
+    const model = (product.model_name ? product.model_name.split('-')[0] : 'ZZ').substring(0, 2).toUpperCase().padEnd(2, 'Z');
+
+    const counter = (++barcodeCounter).toString().padStart(5, '0');
+
+    return `${category}${name}${subCategory}${brand}${counter}${model}`;
+  } catch (error) {
+    console.error("Failed to generate barcode for", product.name, error);
+    return "ERROR";
+  }
+}
+
+
+>>>>>>> Stashed changes
 // ✅ POS Renderer Script with Live Stock Update, Quantity Control, Print Layout, and Business Profile Support
 
 document.addEventListener("DOMContentLoaded", () => {
