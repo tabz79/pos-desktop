@@ -3,98 +3,11 @@
 const { app, BrowserWindow, ipcMain, dialog, shell, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const crypto = require('crypto');
-const { machineIdSync } = require('node-machine-id');
 const ExcelJS = require('exceljs');
 const { printInvoice } = require('./printer');
 const { migrateDbToUserData } = require('./db-path');
 
 console.log("▶️ Electron app starting...");
-
-// --- Activation Gate ---
-const VENDOR_PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
-MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEAY2vRli003+ZhTkFyz9zYo4+W5ZJ
-kuCQSZyx0vxRRg/IQyKQFmfZHe0tyA93gpDfK9mWkQZuEqyAP7AJ9CfPwg==
------END PUBLIC KEY-----`;
-// ^^^ REPLACE the above PEM with the EXACT contents of your vendor_public_key.pem (including BEGIN/END lines)
-
-function getDeviceId() {
-  // Keep consistent with how licenses were generated (hashed machineId)
-  return machineIdSync(); // 64-hex hash by default (stable)
-}
-
-function checkActivation() {
-  const licensePath = path.join(app.getPath('userData'), 'license.json');
-  if (!fs.existsSync(licensePath)) {
-    return { active: false, message: 'License file not found.', reason: 'missing', licensePath };
-  }
-
-  try {
-    const raw = fs.readFileSync(licensePath, 'utf-8');
-    const license = JSON.parse(raw);
-    const { payload, signature } = license || {};
-
-    if (!payload || !signature) {
-      return { active: false, message: 'Bad license format.', reason: 'bad_format', licensePath };
-    }
-
-    // Use base64 (this matches how we generated license.json)
-    const ok = crypto.verify(
-      'sha256',
-      Buffer.from(JSON.stringify(payload)),
-      VENDOR_PUBLIC_KEY,
-      Buffer.from(signature, 'base64')
-    );
-    if (!ok) {
-      return { active: false, message: 'Invalid license signature.', reason: 'bad_signature', licensePath };
-    }
-
-    const currentId = getDeviceId();
-    if (payload.deviceId !== currentId) {
-      return { active: false, message: 'License is for a different device.', reason: 'device_mismatch', expected: currentId, got: payload.deviceId };
-    }
-
-    // Optional expiry check (0 = lifetime)
-    if (payload.exp && Number(payload.exp) > 0 && Date.now() > Number(payload.exp)) {
-      return { active: false, message: 'License expired.', reason: 'expired', licensePath };
-    }
-
-    return { active: true, reason: 'ok', licensePath };
-  } catch (error) {
-    return { active: false, message: 'Failed to read or parse license file.', reason: 'bad_read', error: String(error) };
-  }
-}
-
-function createActivationWindow(deviceId, failReason) {
-  const activationWindow = new BrowserWindow({
-    width: 520,
-    height: 440,
-    title: 'Activate SlipKit POS',
-    webPreferences: {
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: true,
-      preload: path.join(__dirname, 'preload.js'),
-    },
-  });
-
-  activationWindow.loadFile('activation.html');
-
-  ipcMain.handle('get-device-id', () => getDeviceId());
-
-  ipcMain.handle('save-license', async (_event, licenseJson) => {
-    try {
-      const licensePath = path.join(app.getPath('userData'), 'license.json');
-      fs.writeFileSync(licensePath, licenseJson);
-      app.relaunch();
-      app.quit();
-      return { success: true };
-    } catch (error) {
-      return { success: false, message: error.message };
-    }
-  });
-}
-
 
 // --- String helpers (safe for CSV/Excel) ---
 function csvSanitize(v) {
@@ -192,8 +105,13 @@ function buildMenu() {
 }
 
 // --- DB module load ---
-// NOTE: Moved into app.whenReady() AFTER activation passes.
-// let dbAPI; moved below
+let dbAPI;
+try {
+  dbAPI = require('./db');
+  console.log("✅ Database module loaded.");
+} catch (err) {
+  console.error("❌ Failed to load database:", err);
+}
 
 // --- Validation helpers for IPC ---
 const isString = v => typeof v === 'string';
@@ -239,7 +157,6 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1000,
     height: 700,
-    title: app.getName(),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -270,7 +187,7 @@ function generateBarcode(product) {
   }
 }
 
-async function regenerateAllBarcodes(dbAPI) {
+async function regenerateAllBarcodes() {
   if (!dbAPI) return;
   try {
     console.log('🔄 Clearing all existing barcode values...');
@@ -280,7 +197,7 @@ async function regenerateAllBarcodes(dbAPI) {
     console.log(`Found ${products.length} products to process.`);
     const maxBarcode = dbAPI.db.prepare("SELECT MAX(barcode_value) as max FROM products").get();
     if (maxBarcode && maxBarcode.max) {
-      const match = maxBarcode.max.match(/(\d{4})/);
+      const match = maxBarcode.max.match(/(\d{5})/);
       if (match) {
         barcodeCounter = parseInt(match[1], 10);
       }
@@ -304,122 +221,22 @@ async function regenerateAllBarcodes(dbAPI) {
   }
 }
 
-// --- Daily invoice number (compat with old renderer) ---
-async function getNextInvoiceNumber(dbAPI) {
-  // Uses table: invoice_daily_counter (id=1, last_reset_date TEXT, current_daily_number INTEGER)
-  const today = new Date();
-  const todayDateString = today.toISOString().slice(0, 10); // YYYY-MM-DD
-
-  let row = dbAPI.db.prepare(
-    "SELECT last_reset_date, current_daily_number FROM invoice_daily_counter WHERE id = 1"
-  ).get();
-
-  if (!row) {
-    dbAPI.db.prepare(
-      "INSERT INTO invoice_daily_counter (id, last_reset_date, current_daily_number) VALUES (1, ?, 0)"
-    ).run(todayDateString);
-    row = { last_reset_date: todayDateString, current_daily_number: 0 };
-  } else if (row.last_reset_date !== todayDateString) {
-    dbAPI.db.prepare(
-      "UPDATE invoice_daily_counter SET last_reset_date = ?, current_daily_number = 0 WHERE id = 1"
-    ).run(todayDateString);
-    row.current_daily_number = 0;
-  }
-
-  const nextSerial = row.current_daily_number + 1;
-  dbAPI.db.prepare(
-    "UPDATE invoice_daily_counter SET current_daily_number = ? WHERE id = 1"
-  ).run(nextSerial);
-
-  const y = today.getFullYear();
-  const m = String(today.getMonth() + 1).padStart(2, '0');
-  const d = String(today.getDate()).padStart(2, '0');
-  const prefix = `${y}${m}${d}`; // e.g., 20250728
-
-  const invoiceNo = `INV${prefix}${String(nextSerial).padStart(4, '0')}`;
-  console.log(`Generated Invoice No: ${invoiceNo}`);
-  return invoiceNo;
-}
-
 // Recommended for some Windows GPU cache noise
 app.disableHardwareAcceleration();
 
 app.whenReady().then(async () => {
-  // Ensure userData path matches branded folder BEFORE using app.getPath('userData')
-  app.setName("SlipKit POS Suite");
-  if (process.platform === 'win32') {
-    app.setAppUserModelId('com.slipkit.pos');
-  }
-
-  // ACTIVATE FIRST — nothing else runs before this
-  const res = checkActivation();
-  console.log('[ACT] userData =', app.getPath('userData'));
-  console.log('[ACT] deviceId(app) =', getDeviceId());
-  console.log('[ACT] verify result =', res);
-
-  if (!res.active) {
-    console.warn(`Activation check failed: ${res.message}`);
-    createActivationWindow(getDeviceId(), res.reason);
-    return; // critical: stop here (no DB, no windows)
-  }
-
   console.log("🚀 App is ready.");
-
-  // --- DB module load (AFTER activation passes) ---
-  let dbAPI;
-  try {
-    dbAPI = require('./db');
-    console.log("✅ Database module loaded.");
-  } catch (err) {
-    console.error("❌ Failed to load database:", err);
-  }
-
-  // ✅ Optional: auto-migrate DB to %APPDATA% on first run in production
-  if (process.env.NODE_ENV === 'production') {
-    try {
-      const oldDb = path.join(process.cwd(), 'pos.db');
-      migrateDbToUserData(oldDb);
-    } catch (e) {
-      console.warn('[DB] Auto-migration skipped/failed:', e?.message || e);
-    }
-  }
-
-  // Development-only helpers (keep disabled in prod)
   if (process.env.NODE_ENV !== 'production') {
-    // await regenerateAllBarcodes(dbAPI); // Uncomment in dev if needed
+    // await regenerateAllBarcodes(); // Uncomment for development if needed
   } else {
     console.warn('Production mode: Automatic barcode regeneration on boot is disabled.');
   }
 
   createWindow();
-    const __DEBUG_FLAG = process.argv.includes('--debug');
-  if (__DEBUG_FLAG && mainWindow && mainWindow.webContents) {
-    try {
-      mainWindow.webContents.openDevTools({ mode: 'detach' });
-      mainWindow.webContents.on('context-menu', (_e, params) => {
-        try { mainWindow.webContents.inspectElement(params.x, params.y); } catch {}
-      });
-    } catch {}
-  }
-  if (__DEBUG_FLAG) {
-    try { buildMenu(); } catch {}
-  } else {
-    try { Menu.setApplicationMenu(null); } catch {}
-  }
-// ✅ IPC Handlers
+  buildMenu();
+
+  // ✅ IPC Handlers
   if (!dbAPI) console.warn('[DB] not initialized — IPC will still validate but ops may fail');
-
-  // 🔁 BARCODE: manual regeneration trigger (renderer calls invoke('regenerate-barcodes'))
-  ipcMain.handle('regenerate-barcodes', safeHandler(null, async () => {
-    if (!dbAPI) throw new Error('DB not initialized');
-    await regenerateAllBarcodes(dbAPI);
-    return { success: true };
-  }));
-
-  ipcMain.handle('generate-barcode', async (_evt, draft) => {
-    try { return generateBarcode(draft || {}); }
-    catch (e) { console.error('generate-barcode failed:', e); throw e; }
-  });
 
   // Dashboard/products
   ipcMain.handle('get-dashboard-stats', safeHandler(null, () => dbAPI.getDashboardStats()));
@@ -475,6 +292,7 @@ app.whenReady().then(async () => {
     }
   });
 
+  // Store settings
   // Store settings — GET: normalize to both snake_case and camelCase
   ipcMain.handle('get-store-settings', safeHandler(null, async () => {
     const s = await dbAPI.getStoreSettings();
@@ -537,21 +355,10 @@ app.whenReady().then(async () => {
     return { success: true, settings: echo };
   }));
 
-  // CSV Product Import (new channel)
+  // CSV Product Import
   ipcMain.handle('import-products-from-csv', safeHandler({
     rows: (v) => isArray(v)
   }, ({ rows }) => dbAPI.importProductsFromCSV(rows, generateBarcode)));
-
-  // 🔁 Compat alias: old channel name used by older UIs
-  ipcMain.handle('import-products-csv', async (_e, payload) => {
-    try {
-      const rows = Array.isArray(payload) ? payload : payload?.rows;
-      return dbAPI.importProductsFromCSV(rows || [], generateBarcode);
-    } catch (err) {
-      console.error('❌ import-products-csv failed:', err);
-      return { success: false, message: err?.message || 'Import failed' };
-    }
-  });
 
   // Sales
   ipcMain.handle('save-sale', safeHandler({
@@ -580,25 +387,9 @@ app.whenReady().then(async () => {
     barcode_value: isOptional(isString)
   }, (product) => dbAPI.addProduct(product)));
 
-  ipcMain.handle('delete-product', async (_event, payload) => {
-    try {
-      // Coerce ID from number or object like {id: val}
-      const id = (payload && typeof payload === 'object' && payload.id) ? payload.id : payload;
-      const numericId = Number(id);
-
-      if (!Number.isInteger(numericId) || numericId <= 0) {
-        console.warn('[IPC] delete-product invalid ID:', id);
-        throw new Error('Invalid "id" provided for deletion.');
-      }
-
-      const result = await dbAPI.deleteProduct(numericId);
-      // Ensure a consistent return shape with success and changes count
-      return { success: result.changes > 0, changes: result.changes };
-    } catch (err) {
-      console.error('❌ delete-product handler failed:', err);
-      throw err; // Propagate error to renderer
-    }
-  });
+  ipcMain.handle('delete-product', safeHandler({ id: isIntLike }, ({ id }) =>
+    dbAPI.deleteProduct(parseInt(id, 10))
+  ));
 
   ipcMain.handle('update-product', safeHandler({
     id: isIntLike,
@@ -642,52 +433,25 @@ app.whenReady().then(async () => {
     return dbAPI.getUniqueSubCategories(category || null);
   }));
 
-  // ---------- BARCODE LOOKUP (tolerant payload) ----------
-  const coerceBarcode = (payload) => {
-    // Accept: {rawCode}, {code}, string
-    const candidate =
-      (payload && (payload.rawCode ?? payload.code)) ?? payload;
-    if (candidate == null) return null;
-    const s = String(candidate).trim();
-    if (!s) return null;
-    // Remove common scanner noise: CR/LF/TAB + non-printables
-    const cleaned = s.replace(/[\r\n\t]+/g, '').replace(/[^\x20-\x7E]/g, '');
-    return cleaned || null;
-  };
-
-  const validateBarcodePayload = (payload) => {
-    const code = coerceBarcode(payload);
-    if (!code) throw new Error('Invalid "rawCode"');
-    return code;
-  };
-
-  ipcMain.handle('find-product-by-barcode', async (_event, payload) => {
+  // Barcode helpers (kept for compatibility)
+  ipcMain.handle('find-product-by-barcode', safeHandler({
+    rawCode: isString
+  }, ({ rawCode }) => {
+    if (!dbAPI || !rawCode) return null;
     try {
-      if (!dbAPI) return null;
-      const code = validateBarcodePayload(payload);
-      // Optional quick guard
-      if (code.length < 4) throw new Error('Invalid "rawCode"');
-
-      const normalizedCode = code.trim().toUpperCase();
+      const normalizedCode = rawCode.trim().toUpperCase();
       const query = `
         SELECT id, name, price, product_id, barcode_value
         FROM products
-        WHERE UPPER(REPLACE(barcode_value, ' ', '')) = ?
-           OR UPPER(REPLACE(product_id, ' ', ''))   = ?
+        WHERE UPPER(REPLACE(barcode_value, ' ', '')) = ? OR UPPER(REPLACE(product_id, ' ', '')) = ?
       `;
       const product = dbAPI.db.prepare(query).get(normalizedCode, normalizedCode);
       return product || null;
-    } catch (err) {
-      // Log once per event with shape hints; keep production noise low
-      if (process.env.NODE_ENV !== 'production') {
-        console.error('[IPC] find-product-by-barcode failed:', {
-          got: typeof payload,
-          keys: payload && typeof payload === 'object' ? Object.keys(payload) : null
-        }, err.message);
-      }
-      throw err;
+    } catch (error) {
+      console.error('❌ Failed to find product by barcode:', error);
+      return null;
     }
-  });
+  }));
 
   ipcMain.on('barcode-scan-request', (event, barcode) => {
     if (!dbAPI) {
@@ -706,15 +470,9 @@ app.whenReady().then(async () => {
   });
 
   // Printer (invoice)
-  ipcMain.handle('print-invoice', async (_event, invoiceData) => {
+  ipcMain.on('print-invoice', (_event, invoiceData) => {
     console.log('Main: Received print-invoice IPC call. Passing data to printer.js');
-    try {
-      const result = await printInvoice(invoiceData);
-      return result;
-    } catch (error) {
-      console.error('Main: Error during print-invoice IPC call:', error);
-      return { success: false, message: error.message || 'Unknown printing error.' };
-    }
+    printInvoice(invoiceData);
   });
 
   // --- PRINTER ENUMERATION (fix for label printer list) ---
@@ -806,15 +564,24 @@ app.whenReady().then(async () => {
       }
     });
 
-    // Data URL for HTML (avoids temp files)
-    const dataUrl = `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
+    // 👉 Inject Y-offset without breaking original HTML
+    const offsetHtml = html
+      .replace(/<body([^>]*)>/i, `<body$1><div class="yoffset">`)
+      .replace(/<\/body>/i, `</div></body>`);
+
+    const finalHtml = offsetHtml.replace(
+      /<\/head>/i,
+      `<style>.yoffset { position: relative; top: -7mm; }</style></head>`
+    );
+
+    const dataUrl = `data:text/html;charset=utf-8,${encodeURIComponent(finalHtml)}`;
 
     await printWin.loadURL(dataUrl);
 
     // Build print options
     const pageSize = {
       width: mmToMicrons(Number(widthMm) || 50),
-      height: mmToMicrons(Number(heightMm) || 30)
+      height: mmToMicrons(Number(heightMm) || 25)
     };
 
     const printOpts = {
@@ -874,12 +641,37 @@ app.whenReady().then(async () => {
 <head>
   <meta charset="utf-8" />
   <style>
-    @page { size: ${Number(widthMm||50)}mm ${Number(heightMm||30)}mm; margin: 0; }
-    html, body { margin:0; padding:0; }
-    body { font-family: Arial, sans-serif; font-size: 10pt; display:flex; align-items:center; justify-content:center; height:100vh; }
-    .label { text-align:center; padding:2mm; }
-    .big { font-size: 12pt; font-weight: bold; }
-    .small { font-size: 8pt; }
+    @page { 
+      size: ${Number(widthMm||50)}mm ${Number(heightMm||30)}mm; 
+      margin: 0; 
+    }
+    html, body { 
+      margin: 0; 
+      padding: 0; 
+      width: 100%; 
+      height: 100%; 
+    }
+    body { 
+      font-family: Arial, sans-serif; 
+      font-size: 10pt; 
+      display: flex; 
+      align-items: flex-start;   /* stick to top instead of centering */
+      justify-content: center; 
+    }
+    .label { 
+      text-align: center; 
+      padding: 0;   /* removed the 2mm padding that was shifting Y */
+      width: 100%; 
+    }
+    .big { 
+      font-size: 12pt; 
+      font-weight: bold; 
+      margin: 0; 
+    }
+    .small { 
+      font-size: 8pt; 
+      margin: 0; 
+    }
   </style>
 </head>
 <body>
@@ -1092,17 +884,8 @@ app.whenReady().then(async () => {
     }
   }));
 
-  // 🧾 Register the missing handler used by old renderer
-  ipcMain.handle('get-next-invoice-no', async () => {
-    try {
-      return await getNextInvoiceNumber(dbAPI);
-    } catch (err) {
-      console.error('❌ get-next-invoice-no failed:', err);
-      throw err;
-    }
-  });
-
 }); // <-- closes app.whenReady().then(() => { ... })
+
 // Single-instance lock (optional safety; harmless if left here)
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {

@@ -1,0 +1,101 @@
+# === Full removal for SlipKit POS Suite ===
+$ErrorActionPreference = "SilentlyContinue"
+
+# 0) Kill any running processes
+Get-Process | Where-Object {$_.ProcessName -like "SlipKit*POS*"} | Stop-Process -Force
+Get-Process "pos-desktop","electron","SlipKit*POS*" -ErrorAction SilentlyContinue | Stop-Process -Force
+
+# 1) Try official uninstallers (per-user & per-machine)
+$prods = @("SlipKit POS Suite","pos-desktop")
+$installRoots = @(
+  Join-Path $env:LOCALAPPDATA "Programs",
+  ${env:ProgramFiles},
+  ${env:ProgramFiles(x86)}
+) | Where-Object { $_ -and (Test-Path $_) }
+
+foreach ($prod in $prods) {
+  foreach ($root in $installRoots) {
+    $path = Join-Path $root $prod
+    $uninst = Join-Path $path "Uninstall $prod.exe"
+    if (Test-Path $uninst) {
+      Write-Host "Running uninstaller: $uninst"
+      Start-Process $uninst -ArgumentList "/S" -Wait
+    }
+  }
+}
+
+Start-Sleep 1
+
+# 2) Remove leftover folders (install dir, user data, logs)
+$pathsToRemove = @()
+foreach ($prod in $prods) {
+  $pathsToRemove += @(
+    # install dirs (per-user & per-machine)
+    (Join-Path $env:LOCALAPPDATA "Programs\$prod"),
+    (Join-Path ${env:ProgramFiles} $prod),
+    (Join-Path ${env:ProgramFiles(x86)} $prod),
+
+    # user data & caches
+    (Join-Path $env:APPDATA        $prod),
+    (Join-Path $env:LOCALAPPDATA   $prod),
+    (Join-Path $env:LOCALAPPDATA   "$prod\logs"),
+    (Join-Path $env:LOCALAPPDATA   "$prod\Cache")
+  )
+}
+
+$pathsToRemove += @(
+  # Electron-builder caches (safe to delete)
+  (Join-Path $env:LOCALAPPDATA "electron-builder\Cache"),
+  # Misc electron crashpad dir sometimes left behind
+  (Join-Path $env:LOCALAPPDATA "Crashpad")
+)
+
+$pathsToRemove = $pathsToRemove | Select-Object -Unique
+foreach ($p in $pathsToRemove) {
+  if (Test-Path $p) {
+    Write-Host "Removing: $p"
+    Remove-Item $p -Recurse -Force
+  }
+}
+
+# 3) Shortcuts (Start Menu + Desktop)
+$startMenu = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs"
+$desktop   = [Environment]::GetFolderPath("Desktop")
+
+$shortcuts = @(
+  (Join-Path $startMenu "SlipKit POS Suite.lnk"),
+  (Join-Path $startMenu "pos-desktop.lnk"),
+  (Join-Path $desktop   "SlipKit POS Suite.lnk"),
+  (Join-Path $desktop   "pos-desktop.lnk")
+)
+foreach ($lnk in $shortcuts) {
+  if (Test-Path $lnk) {
+    Write-Host "Deleting shortcut: $lnk"
+    Remove-Item $lnk -Force
+  }
+}
+
+# 4) Registry cleanup (per-user + per-machine, if any)
+$regKeys = @(
+  "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\SlipKit POS Suite",
+  "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\pos-desktop",
+  "HKCU:\Software\SlipKit POS Suite",
+  "HKCU:\Software\pos-desktop",
+  "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\SlipKit POS Suite",
+  "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\pos-desktop",
+  "HKLM:\Software\SlipKit POS Suite",
+  "HKLM:\Software\pos-desktop"
+)
+foreach ($k in $regKeys) {
+  if (Test-Path $k) {
+    Write-Host "Removing registry key: $k"
+    Remove-Item $k -Recurse -Force
+  }
+}
+
+# 5) Verify nothing obvious remains
+Write-Host "`n=== Residual checks ==="
+@(
+  (Join-Path $env:LOCALAPPDATA "Programs\SlipKit POS Suite"),
+  (Join-Path $env:APPDATA        "SlipKit POS Suite")
+) | ForEach-Object { "{0} -> {1}" -f $_, (Test-Path $_) }

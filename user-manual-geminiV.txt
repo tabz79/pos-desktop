@@ -1,0 +1,132 @@
+✦ I have now read all the necessary files. I have a comprehensive understanding of the
+  application's functionality, UI, and configuration. I will now proceed to construct the
+  final JSON output based on all the information I have gathered.
+
+  Here is a summary of the information I will use to populate the JSON:
+
+   * Product: Name and version from package.json. OS support from package.json build
+     configuration. Peripherals from main.js (barcode scanner, printer) and renderer.js
+     (thermal printer for invoices, label printer).
+   * Installation: Steps are standard for an NSIS installer. Drivers are mentioned in the
+     context of troubleshooting and printer setup. Data persistence path from db-path.js and
+     main.js.
+   * Update: Method from RELEASE_NOTES.md and general knowledge of Electron apps. Data
+     preservation is the default behavior.
+   * Activation: Flow from main.js and activation.html. Messages from main.js. Offline
+     activation is supported. No grace period is mentioned.
+   * First Run: Store profile fields from renderer.js and db.js.
+   * Data Import: CSV headers from db.js (importProductsFromCSV). Validation rules and common
+     errors can be inferred from the same function.
+   * Sales: Tabs, workflow, and buttons from renderer.js. Discount and GST logic from
+     renderer.js and db.js.
+   * Printing: Invoice and label printing details from printer.js, labelTemplate.js, and
+     renderer.js.
+   * Inventory: Fields and actions from renderer.js and db.js.
+   * Reports: GST reports from main.js (generateExcelReport).
+   * Settings: Printer settings, barcode regeneration, and paths from renderer.js and main.js.
+   * Troubleshooting: Common issues and fixes inferred from the code (e.g., activation issues,
+     scanner problems).
+   * Support: Information to send for support can be determined from the app's dependencies
+     and configuration.
+
+  I will now generate the final JSON.
+   ... first 130 lines hidden ...
+   131   },
+   132   "printing": {
+   133     "invoice": {
+   134       "printerType": "thermal/laser",
+   135       "paperSize": "A4/58/80mm",
+   136       "notes": [
+   137         "The application uses a thermal printer by default for invoices.",
+   138         "The print layout is optimized for 80mm thermal paper."
+   139       ]
+   140     },
+   141     "labels": {
+   142       "sizes": [
+   143         "50x25",
+   144         "50x30",
+   145         "50x38"
+   146       ],
+   147       "barcodeType": "CODE128",
+   148       "tips": [
+   149         "Ensure the label printer is selected in the Settings tab.",
+   150         "Use the 'Test Print' button in Settings to verify the printer
+       connection."
+   151       ]
+   152     }
+   153   },
+   154   "inventory": {
+   155     "fields": [
+   156       "name",
+   157       "category",
+   158       "price",
+   159       "stock",
+   160       "gst_percent",
+   161       "hsn_code",
+   162       "product_id",
+   163       "sub_category",
+   164       "brand",
+   165       "model_name",
+   166       "unit",
+   167       "barcode_value"
+   168     ],
+   169     "actions": [
+   170       "add",
+   171       "edit",
+   172       "delete"
+   173     ]
+   174   },
+   175   "reports": {
+   176     "entries": [
+   177       {
+   178         "name": "GST Summary",
+   179         "path": "Downloads folder",
+   180         "format": "xlsx/csv"
+   181       },
+   182       {
+   183         "name": "GST Slab Summary",
+   184         "path": "Downloads folder",
+   185         "format": "xlsx"
+   186       }
+   187     ]
+   188   },
+   189   "settings": {
+   190     "printers": {
+   191       "invoice": "select",
+   192       "label": "select",
+   193       "testPrint": true
+   194     },
+   195     "barcode": {
+   196       "regenerateAll": true
+   197     },
+   198     "paths": {
+   199       "db": "%APPDATA%\\SlipKit POS Suite\\pos.db",
+   200       "assets": "Application installation directory/assets"
+   201     }
+   202   },
+   203   "troubleshooting": [
+   204     {
+   205       "issue": "License window blank",
+   206       "cause": "activation.html missing or corrupted",
+   207       "fix": "Reinstall the application."
+   208     },
+   209     {
+   210       "issue": "Scanner not detected",
+   211       "fix": "Check Device Manager to ensure the scanner is recognized by
+       Windows. The scanner should be in keyboard-wedge (HID) mode."
+   212     },
+   213     {
+   214       "issue": "Printer not working",
+   215       "fix": "Ensure the correct printer is selected in Settings. For thermal
+       printers, verify the driver is installed and the printer is connected via USB."
+   216     }
+   217   ],
+   218   "support": {
+   219     "whatToSend": [
+   220       "App version (from package.json)",
+   221       "Windows version (e.g., Windows 11 Pro)",
+   222       "Printer model and driver version",
+   223       "Steps to reproduce the issue, including any error messages"
+   224     ]
+   225   }
+   226 }

@@ -1,0 +1,543 @@
+PS D:\Projects\pos-system-app\pos-desktop> cd D:\Projects\pos-system-app\pos-desktop
+PS D:\Projects\pos-system-app\pos-desktop>
+PS D:\Projects\pos-system-app\pos-desktop> # Clean old output
+PS D:\Projects\pos-system-app\pos-desktop> Remove-Item .\dist -Recurse -Force -ErrorAction SilentlyContinue
+PS D:\Projects\pos-system-app\pos-desktop>
+PS D:\Projects\pos-system-app\pos-desktop> # Build once
+PS D:\Projects\pos-system-app\pos-desktop> npm run dist
+
+> pos-desktop@1.0.0 dist
+> electron-builder --win
+
+node:internal/modules/cjs/loader:1413
+  throw err;
+  ^
+
+Error: Cannot find module 'D:\Projects\pos-system-app\pos-desktop\node_modules\electron-builder\cli.js'
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1410:15)
+    at defaultResolveImpl (node:internal/modules/cjs/loader:1051:19)
+    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1056:22)
+    at Module._load (node:internal/modules/cjs/loader:1219:37)
+    at TracingChannel.traceSync (node:diagnostics_channel:322:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:238:24)
+    at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:154:5)
+    at node:internal/main/run_main_module:33:47 {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: []
+}
+
+Node.js v24.6.0
+PS D:\Projects\pos-system-app\pos-desktop>
+PS D:\Projects\pos-system-app\pos-desktop> # Inspect app.asar directly in win-unpacked
+PS D:\Projects\pos-system-app\pos-desktop> npx asar l ".\dist\win-unpacked\resources\app.asar" | Select-String -SimpleMatch "node_modules" -First 5
+PS D:\Projects\pos-system-app\pos-desktop>
+PS D:\Projects\pos-system-app\pos-desktop> # Check specific deps survived
+PS D:\Projects\pos-system-app\pos-desktop> npx asar l ".\dist\win-unpacked\resources\app.asar" | Select-String -SimpleMatch "\exceljs\dist" -First 1
+PS D:\Projects\pos-system-app\pos-desktop> npx asar l ".\dist\win-unpacked\resources\app.asar" | Select-String -SimpleMatch "\bwip-js" -First 1
+PS D:\Projects\pos-system-app\pos-desktop> npx asar l ".\dist\win-unpacked\resources\app.asar" | Select-String -SimpleMatch "\better-sqlite3" -First 1
+PS D:\Projects\pos-system-app\pos-desktop> cd D:\Projects\pos-system-app\pos-desktop
+PS D:\Projects\pos-system-app\pos-desktop>
+PS D:\Projects\pos-system-app\pos-desktop> # blow away node_modules & lockfile cache
+PS D:\Projects\pos-system-app\pos-desktop> Remove-Item .\node_modules -Recurse -Force -ErrorAction SilentlyContinue
+PS D:\Projects\pos-system-app\pos-desktop> Remove-Item package-lock.json -Force -ErrorAction SilentlyContinue
+PS D:\Projects\pos-system-app\pos-desktop>
+PS D:\Projects\pos-system-app\pos-desktop> # reinstall deps exactly as listed in package.json
+PS D:\Projects\pos-system-app\pos-desktop> npm install
+npm warn skipping integrity check for git dependency ssh://git@github.com/electron/node-gyp.git
+npm warn deprecated inflight@1.0.6: This module is not supported, and leaks memory. Do not use it. Check out lru-cache if you want a good and tested way to coalesce async requests by a key value, which is much more comprehensive and powerful.
+npm warn deprecated @npmcli/move-file@2.0.1: This functionality has been moved to @npmcli/fs
+npm warn deprecated lodash.isequal@4.5.0: This package is deprecated. Use require('node:util').isDeepStrictEqual instead.
+npm warn deprecated rimraf@2.7.1: Rimraf versions prior to v4 are no longer supported
+npm warn deprecated rimraf@2.6.3: Rimraf versions prior to v4 are no longer supported
+npm warn deprecated rimraf@3.0.2: Rimraf versions prior to v4 are no longer supported
+npm warn deprecated har-validator@5.1.5: this library is no longer supported
+npm warn deprecated glob@7.2.3: Glob versions prior to v9 are no longer supported
+npm warn deprecated glob@8.1.0: Glob versions prior to v9 are no longer supported
+npm warn deprecated glob@8.1.0: Glob versions prior to v9 are no longer supported
+npm warn deprecated boolean@3.2.0: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
+npm warn deprecated uuid@3.4.0: Please upgrade  to version 7 or higher.  Older versions may use Math.random() in certain circumstances, which is known to be problematic.  See https://v8.dev/blog/math-random for details.
+npm warn deprecated request@2.88.2: request has been deprecated, see https://github.com/request/request/issues/3142
+npm warn deprecated fstream@1.0.12: This package is no longer supported.
+npm error code 1
+npm error path D:\Projects\pos-system-app\pos-desktop\node_modules\better-sqlite3
+npm error command failed
+npm error command C:\WINDOWS\system32\cmd.exe /d /s /c prebuild-install || node-gyp rebuild --release
+npm error Build started 23-08-2025 11:27:26.
+npm error
+npm error Project "D:\Projects\pos-system-app\pos-desktop\node_modules\better-sqlite3\build\binding.sln" on node 1 (default targets).
+npm error ValidateSolutionConfiguration:
+npm error   Building solution configuration "Release|x64".
+npm error Project "D:\Projects\pos-system-app\pos-desktop\node_modules\better-sqlite3\build\binding.sln" (1) is building "D:\Projects\pos-system-app\pos-desktop\node_modules\better-sqlite3\build\better_sqlite3.vcxproj.metaproj" (2) on node 1 (default targets).
+npm error Project "D:\Projects\pos-system-app\pos-desktop\node_modules\better-sqlite3\build\better_sqlite3.vcxproj.metaproj" (2) is building "D:\Projects\pos-system-app\pos-desktop\node_modules\better-sqlite3\build\deps\sqlite3.vcxproj.metaproj" (3) on node 1 (default targets).
+npm error Project "D:\Projects\pos-system-app\pos-desktop\node_modules\better-sqlite3\build\deps\sqlite3.vcxproj.metaproj" (3) is building "D:\Projects\pos-system-app\pos-desktop\node_modules\better-sqlite3\build\deps\locate_sqlite3.vcxproj" (4) on node 1 (default targets).
+npm error C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Microsoft\VC\v170\Microsoft.CppBuild.targets(463,5): error MSB8020: The build tools for ClangCL (Platform Toolset = 'ClangCL') cannot be found. To build using the ClangCL build tools, please install ClangCL build tools.  Alternatively, you may upgrade to the current Visual Studio tools by selecting the Project menu or right-click the solution, and then selecting "Retarget solution". [D:\Projects\pos-system-app\pos-desktop\node_modules\better-sqlite3\build\deps\locate_sqlite3.vcxproj]
+npm error Done Building Project "D:\Projects\pos-system-app\pos-desktop\node_modules\better-sqlite3\build\deps\locate_sqlite3.vcxproj" (default targets) -- FAILED.
+npm error Done Building Project "D:\Projects\pos-system-app\pos-desktop\node_modules\better-sqlite3\build\deps\sqlite3.vcxproj.metaproj" (default targets) -- FAILED.
+npm error Done Building Project "D:\Projects\pos-system-app\pos-desktop\node_modules\better-sqlite3\build\better_sqlite3.vcxproj.metaproj" (default targets) -- FAILED.
+npm error Done Building Project "D:\Projects\pos-system-app\pos-desktop\node_modules\better-sqlite3\build\binding.sln" (default targets) -- FAILED.
+npm error
+npm error Build FAILED.
+npm error
+npm error "D:\Projects\pos-system-app\pos-desktop\node_modules\better-sqlite3\build\binding.sln" (default target) (1) ->
+npm error "D:\Projects\pos-system-app\pos-desktop\node_modules\better-sqlite3\build\better_sqlite3.vcxproj.metaproj" (default target) (2) ->
+npm error "D:\Projects\pos-system-app\pos-desktop\node_modules\better-sqlite3\build\deps\sqlite3.vcxproj.metaproj" (default target) (3) ->
+npm error "D:\Projects\pos-system-app\pos-desktop\node_modules\better-sqlite3\build\deps\locate_sqlite3.vcxproj" (default target) (4) ->
+npm error (PrepareForBuild target) ->
+npm error   C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Microsoft\VC\v170\Microsoft.CppBuild.targets(463,5): error MSB8020: The build tools for ClangCL (Platform Toolset = 'ClangCL') cannot be found. To build using the ClangCL build tools, please install ClangCL build tools.  Alternatively, you may upgrade to the current Visual Studio tools by selecting the Project menu or right-click the solution, and then selecting "Retarget solution". [D:\Projects\pos-system-app\pos-desktop\node_modules\better-sqlite3\build\deps\locate_sqlite3.vcxproj]
+npm error
+npm error     0 Warning(s)
+npm error     1 Error(s)
+npm error
+npm error Time Elapsed 00:00:00.45
+npm error (node:10480) [DEP0176] DeprecationWarning: fs.R_OK is deprecated, use fs.constants.R_OK instead
+npm error (Use `node --trace-deprecation ...` to show where the warning was created)
+npm error prebuild-install warn install No prebuilt binaries found (target=24.6.0 runtime=node arch=x64 libc= platform=win32)
+npm error gyp info it worked if it ends with ok
+npm error gyp verb cli [
+npm error gyp verb cli 'C:\\nvm4w\\nodejs\\node.exe',
+npm error gyp verb cli 'D:\\Projects\\pos-system-app\\pos-desktop\\node_modules\\@electron\\node-gyp\\bin\\node-gyp.js',
+npm error gyp verb cli 'rebuild',
+npm error gyp verb cli '--release'
+npm error gyp verb cli ]
+npm error gyp info using node-gyp@10.2.0-electron.1
+npm error gyp info using node@24.6.0 | win32 | x64
+npm error gyp verb clean removing "build" directory
+npm error gyp verb find Python Python is not set from command line or npm configuration
+npm error gyp verb find Python Python is not set from environment variable PYTHON
+npm error gyp verb find Python checking if the py launcher can be used to find Python 3
+npm error gyp verb find Python - executing "py.exe" to get Python 3 executable path
+npm error gyp sill find Python execFile: exec = "py.exe"
+npm error gyp sill find Python execFile: args = ["-3","-c","import sys; sys.stdout.buffer.write(sys.executable.encode('utf-8'));"]
+npm error gyp sill find Python execFile: opts = {"env":{"ALLUSERSPROFILE":"C:\\ProgramData","APPDATA":"C:\\Users\\Asus\\AppData\\Roaming","ChocolateyInstall":"C:\\ProgramData\\chocolatey","ChocolateyLastPathUpdate":"133444970522418993","COLOR":"1","CommonProgramFiles":"C:\\Program Files\\Common Files","CommonProgramFiles(x86)":"C:\\Program Files (x86)\\Common Files","CommonProgramW6432":"C:\\Program Files\\Common Files","COMPUTERNAME":"TABREZPC","ComSpec":"C:\\WINDOWS\\system32\\cmd.exe","DriverData":"C:\\Windows\\System32\\Drivers\\DriverData","EDITOR":"C:\\WINDOWS\\notepad.exe","HOME":"C:\\Users\\Asus","HOMEDRIVE":"C:","HOMEPATH":"\\Users\\Asus","INIT_CWD":"D:\\Projects\\pos-system-app\\pos-desktop","LOCALAPPDATA":"C:\\Users\\Asus\\AppData\\Local","LOGONSERVER":"\\\\TABREZPC","NODE":"C:\\nvm4w\\nodejs\\node.exe","npm_command":"install","npm_config_cache":"C:\\Users\\Asus\\AppData\\Local\\npm-cache","npm_config_globalconfig":"C:\\nvm4w\\nodejs\\etc\\npmrc","npm_config_global_prefix":"C:\\nvm4w\\nodejs","npm_config_init_module":"C:\\Users\\Asus\\.npm-init.js","npm_config_local_prefix":"D:\\Projects\\pos-system-app\\pos-desktop","npm_config_node_gyp":"C:\\Users\\Asus\\AppData\\Local\\nvm\\v24.6.0\\node_modules\\npm\\node_modules\\node-gyp\\bin\\node-gyp.js","npm_config_noproxy":"","npm_config_npm_version":"11.5.1","npm_config_prefix":"C:\\nvm4w\\nodejs","npm_config_userconfig":"C:\\Users\\Asus\\.npmrc","npm_config_user_agent":"npm/11.5.1 node/v24.6.0 win32 x64 workspaces/false","npm_execpath":"C:\\Users\\Asus\\AppData\\Local\\nvm\\v24.6.0\\node_modules\\npm\\bin\\npm-cli.js","npm_lifecycle_event":"install","npm_lifecycle_script":"prebuild-install || node-gyp rebuild --release","npm_node_execpath":"C:\\nvm4w\\nodejs\\node.exe","npm_package_dev":"","npm_package_dev_optional":"","npm_package_integrity":"sha512-EwhOpyXiOEL/lKzHz9AW1msWFNzGc/z+LzeB3/jnFJpxu+th2yqvzsSWas1v9jgs9+xiXJcD5A8CJxAG2TaghQ==","npm_package_json":"D:\\Projects\\pos-system-app\\pos-desktop\\node_modules\\better-sqlite3\\package.json","npm_package_name":"better-sqlite3","npm_package_optional":"","npm_package_peer":"","npm_package_resolved":"https://registry.npmjs.org/better-sqlite3/-/better-sqlite3-11.10.0.tgz","npm_package_version":"11.10.0","NUMBER_OF_PROCESSORS":"4","NVM_HOME":"C:\\Users\\Asus\\AppData\\Local\\nvm","NVM_SYMLINK":"C:\\nvm4w\\nodejs","OneDrive":"C:\\Users\\Asus\\OneDrive","OneDriveConsumer":"C:\\Users\\Asus\\OneDrive","OS":"Windows_NT","Path":"D:\\Projects\\pos-system-app\\pos-desktop\\node_modules\\better-sqlite3\\node_modules\\.bin;D:\\Projects\\pos-system-app\\pos-desktop\\node_modules\\node_modules\\.bin;D:\\Projects\\pos-system-app\\pos-desktop\\node_modules\\.bin;D:\\Projects\\pos-system-app\\node_modules\\.bin;D:\\Projects\\node_modules\\.bin;D:\\node_modules\\.bin;C:\\Users\\Asus\\AppData\\Local\\nvm\\v24.6.0\\node_modules\\npm\\node_modules\\@npmcli\\run-script\\lib\\node-gyp-bin;C:\\Program Files\\ImageMagick-7.1.2-Q16-HDRI;C:\\Python313\\Scripts\\;C:\\Python313\\;C:\\Program Files\\Python312\\Scripts\\;C:\\Program Files\\Python312\\;C:\\Windows\\system32;C:\\Windows;C:\\Windows\\System32\\Wbem;C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\;C:\\Windows\\System32\\OpenSSH\\;C:\\Program Files\\NVIDIA Corporation\\NVIDIA NvDLISR;C:\\Program Files (x86)\\NVIDIA Corporation\\PhysX\\Common;C:\\WINDOWS\\system32;C:\\WINDOWS;C:\\WINDOWS\\System32\\Wbem;C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\;C:\\WINDOWS\\System32\\OpenSSH\\;C:\\Program Files\\Git\\cmd;C:\\ProgramData\\chocolatey\\bin;C:\\Users\\Asus\\AppData\\Local\\nvm;C:\\nvm4w\\nodejs;C:\\Program Files\\GitHub CLI\\;C:\\Program Files\\nodejs\\;C:\\Program Files\\Docker\\Docker\\resources\\bin;C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance Toolkit\\;C:\\platform-tools;C:\\Users\\Asus\\AppData\\Local\\Programs\\Microsoft VS Code\\bin;C:\\Users\\Asus\\AppData\\Local\\Microsoft\\WindowsApps;C:\\Users\\Asus\\AppData\\Local\\Programs\\cursor\\resources\\app\\bin;C:\\Users\\Asus\\AppData\\Local\\Google\\Cloud SDK\\google-cloud-sdk\\bin;C:\\Users\\Asus\\AppData\\Roaming\\npm","PATHEXT":".COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC;.PY;.PYW;.CPL","PROCESSOR_ARCHITECTURE":"AMD64","PROCESSOR_IDENTIFIER":"Intel64 Family 6 Model 61 Stepping 4, GenuineIntel","PROCESSOR_LEVEL":"6","PROCESSOR_REVISION":"3d04","ProgramData":"C:\\ProgramData","ProgramFiles":"C:\\Program Files","ProgramFiles(x86)":"C:\\Program Files (x86)","ProgramW6432":"C:\\Program Files","PROMPT":"$P$G","PSModulePath":"C:\\Users\\Asus\\Documents\\WindowsPowerShell\\Modules;C:\\Users\\Asus\\AppData\\Local\\Google\\Cloud SDK\\google-cloud-sdk\\platform\\PowerShell;C:\\Program Files\\WindowsPowerShell\\Modules;C:\\WINDOWS\\system32\\WindowsPowerShell\\v1.0\\Modules","PUBLIC":"C:\\Users\\Public","SystemDrive":"C:","SystemRoot":"C:\\WINDOWS","TEMP":"C:\\Users\\Asus\\AppData\\Local\\Temp","TMP":"C:\\Users\\Asus\\AppData\\Local\\Temp","USERDOMAIN":"TABREZPC","USERDOMAIN_ROAMINGPROFILE":"TABREZPC","USERNAME":"Asus","USERPROFILE":"C:\\Users\\Asus","windir":"C:\\WINDOWS","TERM":"dumb"},"shell":false}
+npm error gyp sill find Python execFile result: err = null
+npm error gyp sill find Python execFile result: stdout = "C:\\Python313\\python.exe"
+npm error gyp sill find Python execFile result: stderr = ""
+npm error gyp verb find Python - executable path is "C:\Python313\python.exe"
+npm error gyp verb find Python - executing "C:\Python313\python.exe" to get version
+npm error gyp sill find Python execFile: exec = "C:\\Python313\\python.exe"
+npm error gyp sill find Python execFile: args = ["-c","import sys; print(\"%s.%s.%s\" % sys.version_info[:3]);"]
+npm error gyp sill find Python execFile: opts = {"env":{"ALLUSERSPROFILE":"C:\\ProgramData","APPDATA":"C:\\Users\\Asus\\AppData\\Roaming","ChocolateyInstall":"C:\\ProgramData\\chocolatey","ChocolateyLastPathUpdate":"133444970522418993","COLOR":"1","CommonProgramFiles":"C:\\Program Files\\Common Files","CommonProgramFiles(x86)":"C:\\Program Files (x86)\\Common Files","CommonProgramW6432":"C:\\Program Files\\Common Files","COMPUTERNAME":"TABREZPC","ComSpec":"C:\\WINDOWS\\system32\\cmd.exe","DriverData":"C:\\Windows\\System32\\Drivers\\DriverData","EDITOR":"C:\\WINDOWS\\notepad.exe","HOME":"C:\\Users\\Asus","HOMEDRIVE":"C:","HOMEPATH":"\\Users\\Asus","INIT_CWD":"D:\\Projects\\pos-system-app\\pos-desktop","LOCALAPPDATA":"C:\\Users\\Asus\\AppData\\Local","LOGONSERVER":"\\\\TABREZPC","NODE":"C:\\nvm4w\\nodejs\\node.exe","npm_command":"install","npm_config_cache":"C:\\Users\\Asus\\AppData\\Local\\npm-cache","npm_config_globalconfig":"C:\\nvm4w\\nodejs\\etc\\npmrc","npm_config_global_prefix":"C:\\nvm4w\\nodejs","npm_config_init_module":"C:\\Users\\Asus\\.npm-init.js","npm_config_local_prefix":"D:\\Projects\\pos-system-app\\pos-desktop","npm_config_node_gyp":"C:\\Users\\Asus\\AppData\\Local\\nvm\\v24.6.0\\node_modules\\npm\\node_modules\\node-gyp\\bin\\node-gyp.js","npm_config_noproxy":"","npm_config_npm_version":"11.5.1","npm_config_prefix":"C:\\nvm4w\\nodejs","npm_config_userconfig":"C:\\Users\\Asus\\.npmrc","npm_config_user_agent":"npm/11.5.1 node/v24.6.0 win32 x64 workspaces/false","npm_execpath":"C:\\Users\\Asus\\AppData\\Local\\nvm\\v24.6.0\\node_modules\\npm\\bin\\npm-cli.js","npm_lifecycle_event":"install","npm_lifecycle_script":"prebuild-install || node-gyp rebuild --release","npm_node_execpath":"C:\\nvm4w\\nodejs\\node.exe","npm_package_dev":"","npm_package_dev_optional":"","npm_package_integrity":"sha512-EwhOpyXiOEL/lKzHz9AW1msWFNzGc/z+LzeB3/jnFJpxu+th2yqvzsSWas1v9jgs9+xiXJcD5A8CJxAG2TaghQ==","npm_package_json":"D:\\Projects\\pos-system-app\\pos-desktop\\node_modules\\better-sqlite3\\package.json","npm_package_name":"better-sqlite3","npm_package_optional":"","npm_package_peer":"","npm_package_resolved":"https://registry.npmjs.org/better-sqlite3/-/better-sqlite3-11.10.0.tgz","npm_package_version":"11.10.0","NUMBER_OF_PROCESSORS":"4","NVM_HOME":"C:\\Users\\Asus\\AppData\\Local\\nvm","NVM_SYMLINK":"C:\\nvm4w\\nodejs","OneDrive":"C:\\Users\\Asus\\OneDrive","OneDriveConsumer":"C:\\Users\\Asus\\OneDrive","OS":"Windows_NT","Path":"D:\\Projects\\pos-system-app\\pos-desktop\\node_modules\\better-sqlite3\\node_modules\\.bin;D:\\Projects\\pos-system-app\\pos-desktop\\node_modules\\node_modules\\.bin;D:\\Projects\\pos-system-app\\pos-desktop\\node_modules\\.bin;D:\\Projects\\pos-system-app\\node_modules\\.bin;D:\\Projects\\node_modules\\.bin;D:\\node_modules\\.bin;C:\\Users\\Asus\\AppData\\Local\\nvm\\v24.6.0\\node_modules\\npm\\node_modules\\@npmcli\\run-script\\lib\\node-gyp-bin;C:\\Program Files\\ImageMagick-7.1.2-Q16-HDRI;C:\\Python313\\Scripts\\;C:\\Python313\\;C:\\Program Files\\Python312\\Scripts\\;C:\\Program Files\\Python312\\;C:\\Windows\\system32;C:\\Windows;C:\\Windows\\System32\\Wbem;C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\;C:\\Windows\\System32\\OpenSSH\\;C:\\Program Files\\NVIDIA Corporation\\NVIDIA NvDLISR;C:\\Program Files (x86)\\NVIDIA Corporation\\PhysX\\Common;C:\\WINDOWS\\system32;C:\\WINDOWS;C:\\WINDOWS\\System32\\Wbem;C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\;C:\\WINDOWS\\System32\\OpenSSH\\;C:\\Program Files\\Git\\cmd;C:\\ProgramData\\chocolatey\\bin;C:\\Users\\Asus\\AppData\\Local\\nvm;C:\\nvm4w\\nodejs;C:\\Program Files\\GitHub CLI\\;C:\\Program Files\\nodejs\\;C:\\Program Files\\Docker\\Docker\\resources\\bin;C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance Toolkit\\;C:\\platform-tools;C:\\Users\\Asus\\AppData\\Local\\Programs\\Microsoft VS Code\\bin;C:\\Users\\Asus\\AppData\\Local\\Microsoft\\WindowsApps;C:\\Users\\Asus\\AppData\\Local\\Programs\\cursor\\resources\\app\\bin;C:\\Users\\Asus\\AppData\\Local\\Google\\Cloud SDK\\google-cloud-sdk\\bin;C:\\Users\\Asus\\AppData\\Roaming\\npm","PATHEXT":".COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC;.PY;.PYW;.CPL","PROCESSOR_ARCHITECTURE":"AMD64","PROCESSOR_IDENTIFIER":"Intel64 Family 6 Model 61 Stepping 4, GenuineIntel","PROCESSOR_LEVEL":"6","PROCESSOR_REVISION":"3d04","ProgramData":"C:\\ProgramData","ProgramFiles":"C:\\Program Files","ProgramFiles(x86)":"C:\\Program Files (x86)","ProgramW6432":"C:\\Program Files","PROMPT":"$P$G","PSModulePath":"C:\\Users\\Asus\\Documents\\WindowsPowerShell\\Modules;C:\\Users\\Asus\\AppData\\Local\\Google\\Cloud SDK\\google-cloud-sdk\\platform\\PowerShell;C:\\Program Files\\WindowsPowerShell\\Modules;C:\\WINDOWS\\system32\\WindowsPowerShell\\v1.0\\Modules","PUBLIC":"C:\\Users\\Public","SystemDrive":"C:","SystemRoot":"C:\\WINDOWS","TEMP":"C:\\Users\\Asus\\AppData\\Local\\Temp","TMP":"C:\\Users\\Asus\\AppData\\Local\\Temp","USERDOMAIN":"TABREZPC","USERDOMAIN_ROAMINGPROFILE":"TABREZPC","USERNAME":"Asus","USERPROFILE":"C:\\Users\\Asus","windir":"C:\\WINDOWS","TERM":"dumb"},"shell":false}
+npm error gyp sill find Python execFile result: err = null
+npm error gyp sill find Python execFile result: stdout = "3.13.5\r\n"
+npm error gyp sill find Python execFile result: stderr = ""
+npm error gyp verb find Python - version is "3.13.5"
+npm error gyp info find Python using Python version 3.13.5 found at "C:\Python313\python.exe"
+npm error gyp verb get node dir no --target version specified, falling back to host node version: 24.6.0
+npm error gyp verb install input version string "24.6.0"
+npm error gyp verb install installing version: 24.6.0
+npm error gyp verb install --ensure was passed, so won't reinstall if already installed
+npm error gyp verb install version is already installed, need to check "installVersion"
+npm error gyp verb got "installVersion" 11
+npm error gyp verb needs "installVersion" 11
+npm error gyp verb install version is good
+npm error gyp verb on Windows; need to check node.lib
+npm error gyp verb get node dir target node version installed: 24.6.0
+npm error gyp verb build dir attempting to create "build" dir: D:\Projects\pos-system-app\pos-desktop\node_modules\better-sqlite3\build
+npm error gyp verb build dir "build" dir needed to be created? Yes
+npm error gyp verb find VS msvs_version not set from command line or npm config
+npm error gyp verb find VS VCINSTALLDIR not set, not running in VS Command Prompt
+npm error gyp sill find VS Running C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe [
+npm error gyp sill find VS '-NoProfile',
+npm error gyp sill find VS '-Command',
+npm error gyp sill find VS '&{@(Get-Module -ListAvailable -Name VSSetup).Version.ToString()}'
+npm error gyp sill find VS ]
+npm error gyp sill find VS Running C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe [
+npm error gyp sill find VS '-NoProfile',
+npm error gyp sill find VS '-Command',
+npm error gyp sill find VS '&{Get-VSSetupInstance  | ConvertTo-Json -Depth 3}'
+npm error gyp sill find VS ]
+npm error gyp sill find VS PS stderr = "Get-VSSetupInstance : The term 'Get-VSSetupInstance' is not recognized as the name of a cmdlet, \r\nfunction, script file, or operable program. Check the spelling of the name, or if a path was included, \r\nverify that the path is correct and try again.\r\nAt line:1 char:3\r\n+ &{Get-VSSetupInstance  | ConvertTo-Json -Depth 3}\r\n+   ~~~~~~~~~~~~~~~~~~~\r\n    + CategoryInfo          : ObjectNotFound: (Get-VSSetupInstance:String) [], CommandNotFoundExceptio \r\n   n\r\n    + FullyQualifiedErrorId : CommandNotFoundException\r\n \r\n"
+npm error gyp sill find VS PS stdout = ""
+npm error gyp sill find VS SyntaxError: Unexpected end of JSON input
+npm error gyp sill find VS at JSON.parse (<anonymous>)
+npm error gyp sill find VS at VisualStudioFinder.parseData (D:\Projects\pos-system-app\pos-desktop\node_modules\@electron\node-gyp\lib\find-visualstudio.js:286:21)
+npm error gyp sill find VS at VisualStudioFinder.findNewVSUsingSetupModule (D:\Projects\pos-system-app\pos-desktop\node_modules\@electron\node-gyp\lib\find-visualstudio.js:202:27)
+npm error gyp sill find VS at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+npm error gyp sill find VS at async VisualStudioFinder.findVisualStudio (D:\Projects\pos-system-app\pos-desktop\node_modules\@electron\node-gyp\lib\find-visualstudio.js:68:20)
+npm error gyp sill find VS at async createBuildDir (D:\Projects\pos-system-app\pos-desktop\node_modules\@electron\node-gyp\lib\configure.js:112:18)
+npm error gyp sill find VS at async run (D:\Projects\pos-system-app\pos-desktop\node_modules\@electron\node-gyp\bin\node-gyp.js:81:18)
+npm error gyp verb find VS could not use PowerShell to find Visual Studio 2017 or newer, try re-running with '--loglevel silly' for more details.
+npm error gyp verb find VS
+npm error gyp verb find VS Failure details: undefined
+npm error gyp sill find VS Running C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe [
+npm error gyp sill find VS '-ExecutionPolicy',
+npm error gyp sill find VS 'Unrestricted',
+npm error gyp sill find VS '-NoProfile',
+npm error gyp sill find VS '-Command',
+npm error gyp sill find VS "&{Add-Type -Path 'D:\\Projects\\pos-system-app\\pos-desktop\\node_modules\\@electron\\node-gyp\\lib\\Find-VisualStudio.cs';[VisualStudioConfiguration.Main]::PrintJson()}"
+npm error gyp sill find VS ]
+npm error gyp sill find VS PS stderr = ""
+npm error gyp sill find VS processing installation: "C:\Program Files (x86)\Microsoft Visual Studio\2019\BuildTools"
+npm error gyp sill find VS - version match = ["16.11.36227.6","16","11"]
+npm error gyp sill find VS - found VC.MSBuild.Base
+npm error gyp sill find VS - found VC.Tools.x86.x64
+npm error gyp sill find VS - found Win10/11SDK: 19041
+npm error gyp sill find VS processing installation: "C:\Program Files\Microsoft Visual Studio\2022\Community"
+npm error gyp sill find VS - version match = ["17.14.36408.4","17","14"]
+npm error gyp sill find VS - found VC.Tools.x86.x64
+npm error gyp sill find VS - found Win10/11SDK: 26100
+npm error gyp sill find VS processing installation: "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools"
+npm error gyp sill find VS - version match = ["17.14.36221.1","17","14"]
+npm error gyp sill find VS - found VC.Tools.x86.x64
+npm error gyp sill find VS - found Win10/11SDK: 19041
+npm error gyp sill find VS - found Win10/11SDK: 26100
+npm error gyp sill find VS vsInfo: [
+npm error gyp sill find VS {
+npm error gyp sill find VS version: '16.11.36227.6',
+npm error gyp sill find VS versionMajor: 16,
+npm error gyp sill find VS versionMinor: 11,
+npm error gyp sill find VS versionYear: 2019,
+npm error gyp sill find VS path: 'C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools',
+npm error gyp sill find VS msBuild: 'C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\MSBuild\\Current\\Bin\\MSBuild.exe',
+npm error gyp sill find VS toolset: 'v142',
+npm error gyp sill find VS sdk: '10.0.19041.0'
+npm error gyp sill find VS },
+npm error gyp sill find VS {
+npm error gyp sill find VS version: '17.14.36408.4',
+npm error gyp sill find VS versionMajor: 17,
+npm error gyp sill find VS versionMinor: 14,
+npm error gyp sill find VS versionYear: 2022,
+npm error gyp sill find VS path: 'C:\\Program Files\\Microsoft Visual Studio\\2022\\Community',
+npm error gyp sill find VS msBuild: 'C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\MSBuild\\Current\\Bin\\MSBuild.exe',
+npm error gyp sill find VS toolset: 'v143',
+npm error gyp sill find VS sdk: '10.0.26100.0'
+npm error gyp sill find VS },
+npm error gyp sill find VS {
+npm error gyp sill find VS version: '17.14.36221.1',
+npm error gyp sill find VS versionMajor: 17,
+npm error gyp sill find VS versionMinor: 14,
+npm error gyp sill find VS versionYear: 2022,
+npm error gyp sill find VS path: 'C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools',
+npm error gyp sill find VS msBuild: 'C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\MSBuild\\Current\\Bin\\MSBuild.exe',
+npm error gyp sill find VS toolset: 'v143',
+npm error gyp sill find VS sdk: '10.0.26100.0'
+npm error gyp sill find VS }
+npm error gyp sill find VS ]
+npm error gyp verb find VS checking VS2022 (17.14.36408.4) found at:
+npm error gyp verb find VS "C:\Program Files\Microsoft Visual Studio\2022\Community"
+npm error gyp verb find VS - found "Visual Studio C++ core features"
+npm error gyp verb find VS - found VC++ toolset: v143
+npm error gyp verb find VS - found Windows SDK: 10.0.26100.0
+npm error gyp info find VS using VS2022 (17.14.36408.4) found at:
+npm error gyp info find VS "C:\Program Files\Microsoft Visual Studio\2022\Community"
+npm error gyp info find VS run with --verbose for detailed information
+npm error gyp verb build/config.gypi creating config file
+npm error gyp sill build/config.gypi {
+npm error gyp sill build/config.gypi target_defaults: {
+npm error gyp sill build/config.gypi cflags: [],
+npm error gyp sill build/config.gypi configurations: { Debug: [Object], Release: [Object] },
+npm error gyp sill build/config.gypi default_configuration: 'Release',
+npm error gyp sill build/config.gypi defines: [],
+npm error gyp sill build/config.gypi include_dirs: [],
+npm error gyp sill build/config.gypi libraries: [],
+npm error gyp sill build/config.gypi msbuild_toolset: 'v143',
+npm error gyp sill build/config.gypi msvs_windows_target_platform_version: '10.0.26100.0'
+npm error gyp sill build/config.gypi },
+npm error gyp sill build/config.gypi variables: {
+npm error gyp sill build/config.gypi asan: 0,
+npm error gyp sill build/config.gypi clang: 1,
+npm error gyp sill build/config.gypi control_flow_guard: false,
+npm error gyp sill build/config.gypi coverage: false,
+npm error gyp sill build/config.gypi dcheck_always_on: 0,
+npm error gyp sill build/config.gypi debug_nghttp2: false,
+npm error gyp sill build/config.gypi debug_node: false,
+npm error gyp sill build/config.gypi enable_lto: false,
+npm error gyp sill build/config.gypi enable_pgo_generate: false,
+npm error gyp sill build/config.gypi enable_pgo_use: false,
+npm error gyp sill build/config.gypi error_on_warn: false,
+npm error gyp sill build/config.gypi force_dynamic_crt: 0,
+npm error gyp sill build/config.gypi host_arch: 'x64',
+npm error gyp sill build/config.gypi icu_data_in: '..\\..\\deps\\icu-tmp\\icudt77l.dat',
+npm error gyp sill build/config.gypi icu_endianness: 'l',
+npm error gyp sill build/config.gypi icu_gyp_path: 'tools/icu/icu-generic.gyp',
+npm error gyp sill build/config.gypi icu_path: 'deps/icu-small',
+npm error gyp sill build/config.gypi icu_small: false,
+npm error gyp sill build/config.gypi icu_ver_major: '77',
+npm error gyp sill build/config.gypi libdir: 'lib',
+npm error gyp sill build/config.gypi llvm_version: '19.1.5',
+npm error gyp sill build/config.gypi napi_build_version: '10',
+npm error gyp sill build/config.gypi nasm_version: '2.16',
+npm error gyp sill build/config.gypi node_builtin_shareable_builtins: [
+npm error gyp sill build/config.gypi 'deps/cjs-module-lexer/lexer.js',
+npm error gyp sill build/config.gypi 'deps/cjs-module-lexer/dist/lexer.js',
+npm error gyp sill build/config.gypi 'deps/undici/undici.js',
+npm error gyp sill build/config.gypi 'deps/amaro/dist/index.js'
+npm error gyp sill build/config.gypi ],
+npm error gyp sill build/config.gypi node_byteorder: 'little',
+npm error gyp sill build/config.gypi node_cctest_sources: [
+npm error gyp sill build/config.gypi 'src/node_snapshot_stub.cc',
+npm error gyp sill build/config.gypi 'test/cctest/inspector/test_node_protocol.cc',
+npm error gyp sill build/config.gypi 'test/cctest/node_test_fixture.cc',
+npm error gyp sill build/config.gypi 'test/cctest/test_aliased_buffer.cc',
+npm error gyp sill build/config.gypi 'test/cctest/test_base64.cc',
+npm error gyp sill build/config.gypi 'test/cctest/test_base_object_ptr.cc',
+npm error gyp sill build/config.gypi 'test/cctest/test_cppgc.cc',
+npm error gyp sill build/config.gypi 'test/cctest/test_crypto_clienthello.cc',
+npm error gyp sill build/config.gypi 'test/cctest/test_dataqueue.cc',
+npm error gyp sill build/config.gypi 'test/cctest/test_environment.cc',
+npm error gyp sill build/config.gypi 'test/cctest/test_inspector_socket.cc',
+npm error gyp sill build/config.gypi 'test/cctest/test_inspector_socket_server.cc',
+npm error gyp sill build/config.gypi 'test/cctest/test_json_utils.cc',
+npm error gyp sill build/config.gypi 'test/cctest/test_linked_binding.cc',
+npm error gyp sill build/config.gypi 'test/cctest/test_node_api.cc',
+npm error gyp sill build/config.gypi 'test/cctest/test_node_crypto.cc',
+npm error gyp sill build/config.gypi 'test/cctest/test_node_crypto_env.cc',
+npm error gyp sill build/config.gypi 'test/cctest/test_node_postmortem_metadata.cc',
+npm error gyp sill build/config.gypi 'test/cctest/test_node_task_runner.cc',
+npm error gyp sill build/config.gypi 'test/cctest/test_path.cc',
+npm error gyp sill build/config.gypi 'test/cctest/test_per_process.cc',
+npm error gyp sill build/config.gypi 'test/cctest/test_platform.cc',
+npm error gyp sill build/config.gypi 'test/cctest/test_quic_cid.cc',
+npm error gyp sill build/config.gypi 'test/cctest/test_quic_error.cc',
+npm error gyp sill build/config.gypi 'test/cctest/test_quic_tokens.cc',
+npm error gyp sill build/config.gypi 'test/cctest/test_report.cc',
+npm error gyp sill build/config.gypi 'test/cctest/test_sockaddr.cc',
+npm error gyp sill build/config.gypi 'test/cctest/test_traced_value.cc',
+npm error gyp sill build/config.gypi 'test/cctest/test_util.cc',
+npm error gyp sill build/config.gypi 'test/cctest/node_test_fixture.h'
+npm error gyp sill build/config.gypi ],
+npm error gyp sill build/config.gypi node_debug_lib: false,
+npm error gyp sill build/config.gypi node_enable_d8: false,
+npm error gyp sill build/config.gypi node_enable_v8_vtunejit: false,
+npm error gyp sill build/config.gypi node_fipsinstall: false,
+npm error gyp sill build/config.gypi node_install_corepack: true,
+npm error gyp sill build/config.gypi node_install_npm: true,
+npm error gyp sill build/config.gypi node_library_files: [
+npm error gyp sill build/config.gypi 'lib/_http_agent.js',
+npm error gyp sill build/config.gypi 'lib/_http_client.js',
+npm error gyp sill build/config.gypi 'lib/_http_common.js',
+npm error gyp sill build/config.gypi 'lib/_http_incoming.js',
+npm error gyp sill build/config.gypi 'lib/_http_outgoing.js',
+npm error gyp sill build/config.gypi 'lib/_http_server.js',
+npm error gyp sill build/config.gypi 'lib/_stream_duplex.js',
+npm error gyp sill build/config.gypi 'lib/_stream_passthrough.js',
+npm error gyp sill build/config.gypi 'lib/_stream_readable.js',
+npm error gyp sill build/config.gypi 'lib/_stream_transform.js',
+npm error gyp sill build/config.gypi 'lib/_stream_wrap.js',
+npm error gyp sill build/config.gypi 'lib/_stream_writable.js',
+npm error gyp sill build/config.gypi 'lib/_tls_common.js',
+npm error gyp sill build/config.gypi 'lib/_tls_wrap.js',
+npm error gyp sill build/config.gypi 'lib/assert.js',
+npm error gyp sill build/config.gypi 'lib/assert/strict.js',
+npm error gyp sill build/config.gypi 'lib/async_hooks.js',
+npm error gyp sill build/config.gypi 'lib/buffer.js',
+npm error gyp sill build/config.gypi 'lib/child_process.js',
+npm error gyp sill build/config.gypi 'lib/cluster.js',
+npm error gyp sill build/config.gypi 'lib/console.js',
+npm error gyp sill build/config.gypi 'lib/constants.js',
+npm error gyp sill build/config.gypi 'lib/crypto.js',
+npm error gyp sill build/config.gypi 'lib/dgram.js',
+npm error gyp sill build/config.gypi 'lib/diagnostics_channel.js',
+npm error gyp sill build/config.gypi 'lib/dns.js',
+npm error gyp sill build/config.gypi 'lib/dns/promises.js',
+npm error gyp sill build/config.gypi 'lib/domain.js',
+npm error gyp sill build/config.gypi 'lib/events.js',
+npm error gyp sill build/config.gypi 'lib/fs.js',
+npm error gyp sill build/config.gypi 'lib/fs/promises.js',
+npm error gyp sill build/config.gypi 'lib/http.js',
+npm error gyp sill build/config.gypi 'lib/http2.js',
+npm error gyp sill build/config.gypi 'lib/https.js',
+npm error gyp sill build/config.gypi 'lib/inspector.js',
+npm error gyp sill build/config.gypi 'lib/inspector/promises.js',
+npm error gyp sill build/config.gypi 'lib/internal/abort_controller.js',
+npm error gyp sill build/config.gypi 'lib/internal/assert.js',
+npm error gyp sill build/config.gypi 'lib/internal/assert/assertion_error.js',
+npm error gyp sill build/config.gypi 'lib/internal/assert/calltracker.js',
+npm error gyp sill build/config.gypi 'lib/internal/assert/myers_diff.js',
+npm error gyp sill build/config.gypi 'lib/internal/assert/utils.js',
+npm error gyp sill build/config.gypi 'lib/internal/async_context_frame.js',
+npm error gyp sill build/config.gypi 'lib/internal/async_hooks.js',
+npm error gyp sill build/config.gypi 'lib/internal/async_local_storage/async_context_frame.js',
+npm error gyp sill build/config.gypi 'lib/internal/async_local_storage/async_hooks.js',
+npm error gyp sill build/config.gypi 'lib/internal/blob.js',
+npm error gyp sill build/config.gypi 'lib/internal/blocklist.js',
+npm error gyp sill build/config.gypi 'lib/internal/bootstrap/node.js',
+npm error gyp sill build/config.gypi 'lib/internal/bootstrap/realm.js',
+npm error gyp sill build/config.gypi 'lib/internal/bootstrap/shadow_realm.js',
+npm error gyp sill build/config.gypi 'lib/internal/bootstrap/switches/does_not_own_process_state.js',
+npm error gyp sill build/config.gypi 'lib/internal/bootstrap/switches/does_own_process_state.js',
+npm error gyp sill build/config.gypi 'lib/internal/bootstrap/switches/is_main_thread.js',
+npm error gyp sill build/config.gypi 'lib/internal/bootstrap/switches/is_not_main_thread.js',
+npm error gyp sill build/config.gypi 'lib/internal/bootstrap/web/exposed-wildcard.js',
+npm error gyp sill build/config.gypi 'lib/internal/bootstrap/web/exposed-window-or-worker.js',
+npm error gyp sill build/config.gypi 'lib/internal/buffer.js',
+npm error gyp sill build/config.gypi 'lib/internal/child_process.js',
+npm error gyp sill build/config.gypi 'lib/internal/child_process/serialization.js',
+npm error gyp sill build/config.gypi 'lib/internal/cli_table.js',
+npm error gyp sill build/config.gypi 'lib/internal/cluster/child.js',
+npm error gyp sill build/config.gypi 'lib/internal/cluster/primary.js',
+npm error gyp sill build/config.gypi 'lib/internal/cluster/round_robin_handle.js',
+npm error gyp sill build/config.gypi 'lib/internal/cluster/shared_handle.js',
+npm error gyp sill build/config.gypi 'lib/internal/cluster/utils.js',
+npm error gyp sill build/config.gypi 'lib/internal/cluster/worker.js',
+npm error gyp sill build/config.gypi 'lib/internal/console/constructor.js',
+npm error gyp sill build/config.gypi 'lib/internal/console/global.js',
+npm error gyp sill build/config.gypi 'lib/internal/constants.js',
+npm error gyp sill build/config.gypi 'lib/internal/crypto/aes.js',
+npm error gyp sill build/config.gypi 'lib/internal/crypto/certificate.js',
+npm error gyp sill build/config.gypi 'lib/internal/crypto/cfrg.js',
+npm error gyp sill build/config.gypi 'lib/internal/crypto/cipher.js',
+npm error gyp sill build/config.gypi 'lib/internal/crypto/diffiehellman.js',
+npm error gyp sill build/config.gypi 'lib/internal/crypto/ec.js',
+npm error gyp sill build/config.gypi 'lib/internal/crypto/hash.js',
+npm error gyp sill build/config.gypi 'lib/internal/crypto/hashnames.js',
+npm error gyp sill build/config.gypi 'lib/internal/crypto/hkdf.js',
+npm error gyp sill build/config.gypi 'lib/internal/crypto/keygen.js',
+npm error gyp sill build/config.gypi 'lib/internal/crypto/keys.js',
+npm error gyp sill build/config.gypi 'lib/internal/crypto/mac.js',
+npm error gyp sill build/config.gypi 'lib/internal/crypto/pbkdf2.js',
+npm error gyp sill build/config.gypi 'lib/internal/crypto/random.js',
+npm error gyp sill build/config.gypi 'lib/internal/crypto/rsa.js',
+npm error gyp sill build/config.gypi 'lib/internal/crypto/scrypt.js',
+npm error gyp sill build/config.gypi 'lib/internal/crypto/sig.js',
+npm error gyp sill build/config.gypi 'lib/internal/crypto/util.js',
+npm error gyp sill build/config.gypi 'lib/internal/crypto/webcrypto.js',
+npm error gyp sill build/config.gypi 'lib/internal/crypto/webidl.js',
+npm error gyp sill build/config.gypi 'lib/internal/crypto/x509.js',
+npm error gyp sill build/config.gypi 'lib/internal/data_url.js',
+npm error gyp sill build/config.gypi 'lib/internal/debugger/inspect.js',
+npm error gyp sill build/config.gypi 'lib/internal/debugger/inspect_client.js',
+npm error gyp sill build/config.gypi 'lib/internal/debugger/inspect_repl.js',
+npm error gyp sill build/config.gypi 'lib/internal/dgram.js',
+npm error gyp sill build/config.gypi 'lib/internal/dns/callback_resolver.js',
+npm error gyp sill build/config.gypi 'lib/internal/dns/promises.js',
+npm error gyp sill build/config.gypi 'lib/internal/dns/utils.js',
+npm error gyp sill build/config.gypi 'lib/internal/encoding.js',
+npm error gyp sill build/config.gypi ... 239 more items
+npm error gyp sill build/config.gypi ],
+npm error gyp sill build/config.gypi node_module_version: 137,
+npm error gyp sill build/config.gypi node_no_browser_globals: false,
+npm error gyp sill build/config.gypi node_prefix: '\\usr\\local',
+npm error gyp sill build/config.gypi node_quic: false,
+npm error gyp sill build/config.gypi node_release_urlbase: 'https://nodejs.org/download/release/',
+npm error gyp sill build/config.gypi node_shared: false,
+npm error gyp sill build/config.gypi node_shared_ada: false,
+npm error gyp sill build/config.gypi node_shared_brotli: false,
+npm error gyp sill build/config.gypi node_shared_cares: false,
+npm error gyp sill build/config.gypi node_shared_http_parser: false,
+npm error gyp sill build/config.gypi node_shared_libuv: false,
+npm error gyp sill build/config.gypi node_shared_nghttp2: false,
+npm error gyp sill build/config.gypi node_shared_nghttp3: false,
+npm error gyp sill build/config.gypi node_shared_ngtcp2: false,
+npm error gyp sill build/config.gypi node_shared_openssl: false,
+npm error gyp sill build/config.gypi node_shared_simdjson: false,
+npm error gyp sill build/config.gypi node_shared_simdutf: false,
+npm error gyp sill build/config.gypi node_shared_sqlite: false,
+npm error gyp sill build/config.gypi node_shared_uvwasi: false,
+npm error gyp sill build/config.gypi node_shared_zlib: false,
+npm error gyp sill build/config.gypi node_shared_zstd: false,
+npm error gyp sill build/config.gypi node_tag: '',
+npm error gyp sill build/config.gypi node_target_type: 'executable',
+npm error gyp sill build/config.gypi node_use_amaro: true,
+npm error gyp sill build/config.gypi node_use_bundled_v8: true,
+npm error gyp sill build/config.gypi node_use_node_code_cache: true,
+npm error gyp sill build/config.gypi node_use_node_snapshot: true,
+npm error gyp sill build/config.gypi node_use_openssl: true,
+npm error gyp sill build/config.gypi node_use_sqlite: true,
+npm error gyp sill build/config.gypi node_use_v8_platform: true,
+npm error gyp sill build/config.gypi node_with_ltcg: true,
+npm error gyp sill build/config.gypi node_without_node_options: false,
+npm error gyp sill build/config.gypi node_write_snapshot_as_array_literals: true,
+npm error gyp sill build/config.gypi openssl_is_fips: false,
+npm error gyp sill build/config.gypi openssl_quic: false,
+npm error gyp sill build/config.gypi ossfuzz: false,
+npm error gyp sill build/config.gypi shlib_suffix: 'so.137',
+npm error gyp sill build/config.gypi single_executable_application: true,
+npm error gyp sill build/config.gypi suppress_all_error_on_warn: false,
+npm error gyp sill build/config.gypi target_arch: 'x64',
+npm error gyp sill build/config.gypi ubsan: 0,
+npm error gyp sill build/config.gypi use_ccache_win: 0,
+npm error gyp sill build/config.gypi use_prefix_to_find_headers: false,
+npm error gyp sill build/config.gypi v8_enable_31bit_smis_on_64bit_arch: 0,
+npm error gyp sill build/config.gypi v8_enable_extensible_ro_snapshot: 0,
+npm error gyp sill build/config.gypi v8_enable_external_code_space: 0,
+npm error gyp sill build/config.gypi v8_enable_gdbjit: 0,
+npm error gyp sill build/config.gypi v8_enable_hugepage: 0,
+npm error gyp sill build/config.gypi v8_enable_i18n_support: 1,
+npm error gyp sill build/config.gypi v8_enable_inspector: 1,
+npm error gyp sill build/config.gypi v8_enable_javascript_promise_hooks: 1,
+npm error gyp sill build/config.gypi v8_enable_lite_mode: 0,
+npm error gyp sill build/config.gypi v8_enable_maglev: 1,
+npm error gyp sill build/config.gypi v8_enable_object_print: 1,
+npm error gyp sill build/config.gypi v8_enable_pointer_compression: 0,
+npm error gyp sill build/config.gypi v8_enable_pointer_compression_shared_cage: 0,
+npm error gyp sill build/config.gypi v8_enable_sandbox: 0,
+npm error gyp sill build/config.gypi v8_enable_short_builtin_calls: 1,
+npm error gyp sill build/config.gypi v8_enable_wasm_simd256_revec: 1,
+npm error gyp sill build/config.gypi v8_enable_webassembly: 1,
+npm error gyp sill build/config.gypi v8_optimized_debug: 1,
+npm error gyp sill build/config.gypi v8_promise_internal_field_count: 1,
+npm error gyp sill build/config.gypi v8_random_seed: 0,
+npm error gyp sill build/config.gypi v8_trace_maps: 0,
+npm error gyp sill build/config.gypi v8_use_siphash: 1,
+npm error gyp sill build/config.gypi want_separate_host_toolset: 0,
+npm error gyp sill build/config.gypi nodedir: 'C:\\Users\\Asus\\AppData\\Local\\node-gyp\\Cache\\24.6.0',
+npm error gyp sill build/config.gypi python: 'C:\\Python313\\python.exe',
+npm error gyp sill build/config.gypi standalone_static_library: 1,
+npm error gyp sill build/config.gypi msbuild_path: 'C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\MSBuild\\Current\\Bin\\MSBuild.exe',
+npm error gyp sill build/config.gypi cache: 'C:\\Users\\Asus\\AppData\\Local\\npm-cache',
+npm error gyp sill build/config.gypi globalconfig: 'C:\\nvm4w\\nodejs\\etc\\npmrc',
+npm error gyp sill build/config.gypi global_prefix: 'C:\\nvm4w\\nodejs',
+npm error gyp sill build/config.gypi init_module: 'C:\\Users\\Asus\\.npm-init.js',
+npm error gyp sill build/config.gypi local_prefix: 'D:\\Projects\\pos-system-app\\pos-desktop',
+npm error gyp sill build/config.gypi node_gyp: 'C:\\Users\\Asus\\AppData\\Local\\nvm\\v24.6.0\\node_modules\\npm\\node_modules\\node-gyp\\bin\\node-gyp.js',
+npm error gyp sill build/config.gypi npm_version: '11.5.1',
+npm error gyp sill build/config.gypi prefix: 'C:\\nvm4w\\nodejs',
+npm error gyp sill build/config.gypi userconfig: 'C:\\Users\\Asus\\.npmrc',
+npm error gyp sill build/config.gypi user_agent: 'npm/11.5.1 node/v24.6.0 win32 x64 workspaces/false'
+npm error gyp sill build/config.gypi }
+npm error gyp sill build/config.gypi }
+npm error gyp verb build/config.gypi writing out config file: D:\Projects\pos-system-app\pos-desktop\node_modules\better-sqlite3\build\config.gypi
+npm error gyp verb config.gypi checking for gypi file: D:\Projects\pos-system-app\pos-desktop\node_modules\better-sqlite3\config.gypi
+npm error gyp verb common.gypi checking for gypi file: D:\Projects\pos-system-app\pos-desktop\node_modules\better-sqlite3\common.gypi
+npm error gyp verb gyp gyp format was not specified; forcing "msvs"
+npm error gyp info spawn C:\Python313\python.exe
+npm error gyp info spawn args [
+npm error gyp info spawn args 'D:\\Projects\\pos-system-app\\pos-desktop\\node_modules\\@electron\\node-gyp\\gyp\\gyp_main.py',
+npm error gyp info spawn args 'binding.gyp',
+npm error gyp info spawn args '-f',
+npm error gyp info spawn args 'msvs',
+npm error gyp info spawn args '-I',
+npm error gyp info spawn args 'D:\\Projects\\pos-system-app\\pos-desktop\\node_modules\\better-sqlite3\\build\\config.gypi',
+npm error gyp info spawn args '-I',
+npm error gyp info spawn args 'D:\\Projects\\pos-system-app\\pos-desktop\\node_modules\\@electron\\node-gyp\\addon.gypi',
+npm error gyp info spawn args '-I',
+npm error gyp info spawn args 'C:\\Users\\Asus\\AppData\\Local\\node-gyp\\Cache\\24.6.0\\include\\node\\common.gypi',
+npm error gyp info spawn args '-Dlibrary=shared_library',
+npm error gyp info spawn args '-Dvisibility=default',
+npm error gyp info spawn args '-Dnode_root_dir=C:\\Users\\Asus\\AppData\\Local\\node-gyp\\Cache\\24.6.0',
+npm error gyp info spawn args '-Dnode_gyp_dir=D:\\Projects\\pos-system-app\\pos-desktop\\node_modules\\@electron\\node-gyp',
+npm error gyp info spawn args '-Dnode_lib_file=C:\\\\Users\\\\Asus\\\\AppData\\\\Local\\\\node-gyp\\\\Cache\\\\24.6.0\\\\<(target_arch)\\\\node.lib',
+npm error gyp info spawn args '-Dmodule_root_dir=D:\\Projects\\pos-system-app\\pos-desktop\\node_modules\\better-sqlite3',
+npm error gyp info spawn args '-Dnode_engine=v8',
+npm error gyp info spawn args '--depth=.',
+npm error gyp info spawn args '--no-parallel',
+npm error gyp info spawn args '--generator-output',
+npm error gyp info spawn args 'D:\\Projects\\pos-system-app\\pos-desktop\\node_modules\\better-sqlite3\\build',
+npm error gyp info spawn args '-Goutput_dir=.'
+npm error gyp info spawn args ]
+npm error gyp verb build type Release
+npm error gyp verb architecture x64
+npm error gyp verb node dev dir C:\Users\Asus\AppData\Local\node-gyp\Cache\24.6.0
+npm error gyp verb python C:\Python313\python.exe
+npm error gyp verb found first Solution file build/binding.sln
+npm error gyp verb using MSBuild: C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe
+npm error gyp info spawn C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe
+npm error gyp info spawn args [
+npm error gyp info spawn args 'build/binding.sln',
+npm error gyp info spawn args '/nologo',
+npm error gyp info spawn args '/p:Configuration=Release;Platform=x64'
+npm error gyp info spawn args ]
+npm error gyp ERR! build error
+npm error gyp ERR! stack Error: `C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe` failed with exit code: 1
+npm error gyp ERR! stack at ChildProcess.<anonymous> (D:\Projects\pos-system-app\pos-desktop\node_modules\@electron\node-gyp\lib\build.js:215:23)
+npm error gyp ERR! stack at ChildProcess.emit (node:events:508:28)
+npm error gyp ERR! stack at ChildProcess._handle.onexit (node:internal/child_process:294:12)
+npm error gyp ERR! System Windows_NT 10.0.22631
+npm error gyp ERR! command "C:\\nvm4w\\nodejs\\node.exe" "D:\\Projects\\pos-system-app\\pos-desktop\\node_modules\\@electron\\node-gyp\\bin\\node-gyp.js" "rebuild" "--release"
+npm error gyp ERR! cwd D:\Projects\pos-system-app\pos-desktop\node_modules\better-sqlite3
+npm error gyp ERR! node -v v24.6.0
+npm error gyp ERR! node-gyp -v v10.2.0-electron.1
+npm error gyp ERR! not ok
+npm error A complete log of this run can be found in: C:\Users\Asus\AppData\Local\npm-cache\_logs\2025-08-23T05_55_48_394Z-debug-0.log
+PS D:\Projects\pos-system-app\pos-desktop>

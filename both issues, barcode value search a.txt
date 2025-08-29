@@ -1,0 +1,182 @@
+both issues, barcode value search and sub categories are still present. you didn't fix them.
+terminal logs:
+PS D:\Projects\pos-system-app\pos-desktop> npm start
+
+> pos-desktop@1.0.3 start
+> npx electron .
+
+
+Γû╢∩╕Å Electron app starting...
+[ACT] userData = C:\Users\Asus\AppData\Roaming\SlipKit POS Suite
+[ACT] deviceId(app) = 8b8e04dc9fca92394a1907fb53d86c3b8b205bc08a8d819ae89afa1a9a296d02
+[ACT] verify result = {
+  active: true,
+  reason: 'ok',
+  licensePath: 'C:\\Users\\Asus\\AppData\\Roaming\\SlipKit POS Suite\\license.json'
+}
+≡ƒÜÇ App is ready.
+[DB] Both DBs found. Scores old/new: 2175 3 ΓåÆ Using: D:\Projects\pos-system-app\pos-desktop\pos.db
+≡ƒôü [DEBUG] DB path resolved to: D:\Projects\pos-system-app\pos-desktop\pos.db
+[DB] PRAGMA journal_mode -> [ { journal_mode: 'wal' } ]
+[DB] PRAGMA foreign_keys -> on
+[DB] PRAGMA synchronous -> normal
+[DB] Schema init: idempotent setup complete
+Γ£à Database module loaded.
+≡ƒôª Creating main window...
+Γ£à Window loaded.
+ΓÅ▒∩╕Å getAllProducts: 28.859ms
+[IPC] getUniqueSubCategories category = undefined
+
+
+
+
+
+both issues are still not resolved.
+terminal logs:
+PS D:\Projects\pos-system-app\pos-desktop> npm start
+
+> pos-desktop@1.0.3 start
+> npx electron .
+
+
+Γû╢∩╕Å Electron app starting...
+[ACT] userData = C:\Users\Asus\AppData\Roaming\SlipKit POS Suite
+[ACT] deviceId(app) = 8b8e04dc9fca92394a1907fb53d86c3b8b205bc08a8d819ae89afa1a9a296d02
+[ACT] verify result = {
+  active: true,
+  reason: 'ok',
+  licensePath: 'C:\\Users\\Asus\\AppData\\Roaming\\SlipKit POS Suite\\license.json'
+}
+≡ƒÜÇ App is ready.
+[DB] Both DBs found. Scores old/new: 2175 3 ΓåÆ Using: D:\Projects\pos-system-app\pos-desktop\pos.db
+≡ƒôü [DEBUG] DB path resolved to: D:\Projects\pos-system-app\pos-desktop\pos.db
+[DB] PRAGMA journal_mode -> [ { journal_mode: 'wal' } ]
+[DB] PRAGMA foreign_keys -> on
+[DB] PRAGMA synchronous -> normal
+[DB] Schema init: idempotent setup complete
+Γ£à Database module loaded.
+≡ƒôª Creating main window...
+Γ£à Window loaded.
+ΓÅ▒∩╕Å getAllProducts: 34.698ms
+[IPC] getUniqueSubCategories category = undefined
+[IPC] getUniqueSubCategories category = undefined
+[IPC] getUniqueSubCategories category = undefined
+ΓÅ▒∩╕Å getAllProducts: 16.256ms
+ΓÅ▒∩╕Å getAllProducts: 11.989ms
+[1752:0828/135233.335:ERROR:CONSOLE:1] "Request Autofill.enable failed. {"code":-32601,"message":"'Autofill.enable' wasn't found"}", source: devtools://devtools/bundled/core/protocol_client/protocol_client.js (1)
+[1752:0828/135233.336:ERROR:CONSOLE:1] "Request Autofill.setAddresses failed. {"code":-32601,"message":"'Autofill.setAddresses' wasn't found"}", source: devtools://devtools/bundled/core/protocol_client/protocol_client.js (1)
+
+console logs:
+renderer.js:870 Top Products Data: Array(5)
+VM4 sandbox_bundle:2 Electron Security Warning (Insecure Content-Security-Policy) This renderer process has either no Content Security
+  Policy set or a policy with "unsafe-eval" enabled. This exposes users of
+  this app to unnecessary security risks.
+
+For more information and help, consult
+https://electronjs.org/docs/tutorial/security.
+This warning will not show up
+once the app is packaged.
+warnAboutInsecureCSP @ VM4 sandbox_bundle:2
+renderer.js:3006 🧭 Switching to: Sales
+renderer.js:2245 renderSalesProducts: productsToRender received: Array(1934)
+renderer.js:2250 salesProductList element found: <div id=​"salesProductList" class=​"grid grid-cols-2 md:​grid-cols-3 lg:​grid-cols-4 xl:​grid-cols-5 gap-4 mb-6">​…​</div>​
+renderer.js:2291 DOM_rendering_sales: 8.882080078125 ms
+renderer.js:2245 renderSalesProducts: productsToRender received: Array(2)
+renderer.js:2250 salesProductList element found: <div id=​"salesProductList" class=​"grid grid-cols-2 md:​grid-cols-3 lg:​grid-cols-4 xl:​grid-cols-5 gap-4 mb-6">​…​</div>​
+renderer.js:2291 DOM_rendering_sales: 0.201904296875 ms
+renderer.js:2245 renderSalesProducts: productsToRender received: Array(1922)
+renderer.js:2250 salesProductList element found: <div id=​"salesProductList" class=​"grid grid-cols-2 md:​grid-cols-3 lg:​grid-cols-4 xl:​grid-cols-5 gap-4 mb-6">​…​</div>​
+renderer.js:2291 DOM_rendering_sales: 9.93408203125 ms
+renderer.js:2245 renderSalesProducts: productsToRender received: Array(1934)
+renderer.js:2250 salesProductList element found: <div id=​"salesProductList" class=​"grid grid-cols-2 md:​grid-cols-3 lg:​grid-cols-4 xl:​grid-cols-5 gap-4 mb-6">​…​</div>​
+renderer.js:2291 DOM_rendering_sales: 7.031982421875 ms
+renderer.js:2245 renderSalesProducts: productsToRender received: Array(1922)
+renderer.js:2250 salesProductList element found: <div id=​"salesProductList" class=​"grid grid-cols-2 md:​grid-cols-3 lg:​grid-cols-4 xl:​grid-cols-5 gap-4 mb-6">​…​</div>​
+renderer.js:2291 DOM_rendering_sales: 7.968994140625 ms
+renderer.js:2245 renderSalesProducts: productsToRender received: Array(1934)
+renderer.js:2250 salesProductList element found: <div id=​"salesProductList" class=​"grid grid-cols-2 md:​grid-cols-3 lg:​grid-cols-4 xl:​grid-cols-5 gap-4 mb-6">​…​</div>​
+renderer.js:2291 DOM_rendering_sales: 2.8291015625 ms
+renderer.js:2245 renderSalesProducts: productsToRender received: Array(1)
+renderer.js:2250 salesProductList element found: <div id=​"salesProductList" class=​"grid grid-cols-2 md:​grid-cols-3 lg:​grid-cols-4 xl:​grid-cols-5 gap-4 mb-6">​…​</div>​
+renderer.js:2291 DOM_rendering_sales: 0.166015625 ms
+renderer.js:2245 renderSalesProducts: productsToRender received: Array(0)
+renderer.js:2250 salesProductList element found: <div id=​"salesProductList" class=​"grid grid-cols-2 md:​grid-cols-3 lg:​grid-cols-4 xl:​grid-cols-5 gap-4 mb-6">​…​</div>​
+renderer.js:2291 DOM_rendering_sales: 2.39794921875 ms
+renderer.js:2245 renderSalesProducts: productsToRender received: Array(0)
+renderer.js:2250 salesProductList element found: <div id=​"salesProductList" class=​"grid grid-cols-2 md:​grid-cols-3 lg:​grid-cols-4 xl:​grid-cols-5 gap-4 mb-6">​…​</div>​
+renderer.js:2291 DOM_rendering_sales: 2.326171875 ms
+renderer.js:2245 renderSalesProducts: productsToRender received: Array(0)
+renderer.js:2250 salesProductList element found: <div id=​"salesProductList" class=​"grid grid-cols-2 md:​grid-cols-3 lg:​grid-cols-4 xl:​grid-cols-5 gap-4 mb-6">​…​</div>​
+renderer.js:2291 DOM_rendering_sales: 2.259033203125 ms
+renderer.js:2245 renderSalesProducts: productsToRender received: Array(0)
+renderer.js:2250 salesProductList element found: <div id=​"salesProductList" class=​"grid grid-cols-2 md:​grid-cols-3 lg:​grid-cols-4 xl:​grid-cols-5 gap-4 mb-6">​…​</div>​
+renderer.js:2291 DOM_rendering_sales: 2.281005859375 ms
+renderer.js:2245 renderSalesProducts: productsToRender received: Array(0)
+renderer.js:2250 salesProductList element found: <div id=​"salesProductList" class=​"grid grid-cols-2 md:​grid-cols-3 lg:​grid-cols-4 xl:​grid-cols-5 gap-4 mb-6">​…​</div>​
+renderer.js:2291 DOM_rendering_sales: 2.321044921875 ms
+renderer.js:2245 renderSalesProducts: productsToRender received: Array(0)
+renderer.js:2250 salesProductList element found: <div id=​"salesProductList" class=​"grid grid-cols-2 md:​grid-cols-3 lg:​grid-cols-4 xl:​grid-cols-5 gap-4 mb-6">​…​</div>​
+renderer.js:2291 DOM_rendering_sales: 3.2919921875 ms
+renderer.js:3006 🧭 Switching to: Products
+renderer.js:1877 IPC_getProducts: 60.088134765625 ms
+renderer.js:1288 [Products] renderProducts() called
+renderer.js:1292 [Products] using list with 1934 items
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

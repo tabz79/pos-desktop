@@ -1,115 +1,58 @@
 const path = require('path');
+const { resolvePosDbPath } = require('./db-path');
 
 let db;
-try {
-  const Database = require('better-sqlite3');
-  const dbPath = path.join(__dirname, 'pos.db');
-  console.log("📁 [DEBUG] DB path resolved to:", dbPath);
-  db = new Database(dbPath);
 
-  db.pragma('foreign_keys = ON');
+// helpers
+function getTableInfo(db, table) {
+  return db.prepare(`PRAGMA table_info(${table})`).all();
+}
+function hasColumn(db, table, col) {
+  return getTableInfo(db, table).some(c => c.name === col);
+}
+function hasIndex(db, table, indexName) {
+  return db.prepare(`PRAGMA index_list(${table})`).all().some(i => i.name === indexName);
+}
+function getUserVersion(db) {
+  return db.prepare('PRAGMA user_version').get().user_version ?? 0;
+}
+function setUserVersion(db, v) {
+  db.pragma(`user_version = ${v}`);
+}
 
-  // ✅ Create initial products table (for first install only)
-  db.prepare(`
-    CREATE TABLE IF NOT EXISTS products (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      price REAL NOT NULL,
-      stock INTEGER NOT NULL,
-      hsn_code TEXT
-    )
-  `).run();
+function initSchema(db) {
+  const tx = db.transaction(() => {
+    // 1) Core tables (additive & safe)
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS products (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        product_id TEXT UNIQUE,
+        name TEXT NOT NULL,
+        price REAL NOT NULL,
+        stock INTEGER NOT NULL,
+        category TEXT,
+        sub_category TEXT,
+        brand TEXT,
+        model_name TEXT,
+        unit TEXT,
+        hsn_code TEXT,
+        gst_percent REAL,
+        barcode_value TEXT UNIQUE
+      )
+    `).run();
 
-  // 🛠️ Rebuild products table with category, hsn_code, gst_percent (safe migration)
-  try {
-    const columns = db.prepare(`PRAGMA table_info(products)`).all();
-    const hasCategory = columns.some(col => col.name === 'category');
-    const hasGST = columns.some(col => col.name === 'gst_percent');
-    const hasProductId = columns.some(col => col.name === 'product_id');
-    const hasSubCategory = columns.some(col => col.name === 'sub_category');
-    const hasBrand = columns.some(col => col.name === 'brand');
-    const hasModelName = columns.some(col => col.name === 'model_name');
-    const hasUnit = columns.some(col => col.name === 'unit');
-    const hasBarcodeValue = columns.some(col => col.name === 'barcode_value');
-
-    if (!hasCategory || !hasGST || !hasProductId || !hasSubCategory || !hasBrand || !hasModelName || !hasUnit || !hasBarcodeValue) {
-      console.log("♻️ Rebuilding products table with new Excel fields...");
-      db.exec('PRAGMA foreign_keys = OFF');
-      db.prepare(`ALTER TABLE products RENAME TO products_old`).run();
-      db.prepare(`
-        CREATE TABLE products (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          product_id TEXT UNIQUE,
-          name TEXT NOT NULL,
-          price REAL NOT NULL,
-          stock INTEGER NOT NULL,
-          category TEXT,
-          sub_category TEXT,
-          brand TEXT,
-          model_name TEXT,
-          unit TEXT,
-          hsn_code TEXT,
-          gst_percent REAL,
-          barcode_value TEXT UNIQUE
-        )
-      `).run();
-      db.prepare(`
-        INSERT INTO products (id, name, price, stock, category, hsn_code, gst_percent)
-        SELECT id, name, price, stock, category, hsn_code, gst_percent FROM products_old
-      `).run();
-      db.prepare(`DROP TABLE products_old`).run();
-      db.exec('PRAGMA foreign_keys = ON');
-      console.log("✅ Products table updated with Excel fields.");
-    }
-  } catch (err) {
-    console.error("❌ Failed to migrate products table:", err);
-  }
-
-  // ✅ Create sales table
-  db.prepare(`
-    CREATE TABLE IF NOT EXISTS sales (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      total REAL NOT NULL,
-      timestamp TEXT NOT NULL
-    )
-  `).run();
-
-  // 🩺 One-time migration from 'created_at' → 'timestamp'
-  try {
-    const columns = db.prepare(`PRAGMA table_info(sales)`).all();
-    const hasCreatedAt = columns.some(col => col.name === 'created_at');
-    const hasTimestamp = columns.some(col => col.name === 'timestamp');
-
-    if (hasCreatedAt && !hasTimestamp) {
-      db.exec('PRAGMA foreign_keys = OFF');
-
-      db.prepare(`ALTER TABLE sales RENAME TO sales_old`).run();
-      db.prepare(`
-        CREATE TABLE sales (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          total REAL NOT NULL,
-          timestamp TEXT NOT NULL
-        )
-      `).run();
-      db.prepare(`
-        INSERT INTO sales (id, total, timestamp)
-        SELECT id, total, created_at FROM sales_old
-      `).run();
-      db.prepare(`DROP TABLE sales_old`).run();
-
-      db.exec('PRAGMA foreign_keys = ON');
-      console.log("⚙️ Migrated sales table: renamed 'created_at' to 'timestamp'.");
-    }
-  } catch (err) {
-    console.error("⚠️ Migration check failed:", err);
-  }
-
-  // ✅ Recreate sale_items with full GST structure
-  try {
-    console.log("♻️ Forcing recreation of sale_items table...");
-    db.exec('PRAGMA foreign_keys = OFF');
-
-    db.exec('PRAGMA foreign_keys = ON');
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS sales (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        total REAL NOT NULL,
+        timestamp TEXT NOT NULL,
+        invoice_no TEXT,
+        payment_method TEXT,
+        customer_name TEXT,
+        customer_phone TEXT,
+        customer_gstin TEXT
+      )
+    `).run();
 
     db.prepare(`
       CREATE TABLE IF NOT EXISTS sale_items (
@@ -129,64 +72,112 @@ try {
       )
     `).run();
 
-    console.log("✅ Rebuilt sale_items table with GST columns.");
-  } catch (err) {
-    console.error("⚠️ Failed updating sale_items table:", err);
-  }
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS store_settings (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        store_name TEXT,
+        store_address TEXT,
+        label_printer_name TEXT
+      )
+    `).run();
 
-  // ✅ Create store_settings table (singleton row)
-  db.prepare(`
-    CREATE TABLE IF NOT EXISTS store_settings (
-      id INTEGER PRIMARY KEY CHECK (id = 1),
-      store_name TEXT,
-      store_address TEXT,
-      label_printer_name TEXT
-    )
-  `).run();
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS invoice_counter (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        current_number INTEGER DEFAULT 0
+      )
+    `).run();
+    db.prepare(`INSERT OR IGNORE INTO invoice_counter (id, current_number) VALUES (1, 0)`).run();
 
-  // Migration: Add label_printer_name column if missing
-  try {
-    const cols = db.prepare("PRAGMA table_info(store_settings)").all();
-    const hasLabelPrinterName = cols.some(col => col.name === "label_printer_name");
-    if (!hasLabelPrinterName) {
-      db.prepare("ALTER TABLE store_settings ADD COLUMN label_printer_name TEXT").run();
-      console.log("✅ label_printer_name column added to store_settings table.");
-    } else {
-      console.log("🟡 label_printer_name column already exists in store_settings.");
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS invoice_daily_counter (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        last_reset_date TEXT NOT NULL,
+        current_daily_number INTEGER DEFAULT 0
+      )
+    `).run();
+    db.prepare(`INSERT OR IGNORE INTO invoice_daily_counter (id, last_reset_date, current_daily_number) VALUES (1, ?, 0)`).run(new Date().toISOString().slice(0, 10));
+
+    // 2) Columns added later — add only if missing
+    // store_settings late columns used by saveStoreSettings
+    const storeLateCols = [
+      { name: 'store_subtitle', type: 'TEXT' },
+      { name: 'store_phone', type: 'TEXT' },
+      { name: 'store_gstin', type: 'TEXT' },
+      { name: 'store_footer', type: 'TEXT' },
+      { name: 'store_fssai', type: 'TEXT' },
+      { name: 'schema_version', type: `TEXT DEFAULT '1.1'` },
+      { name: 'label_printer_name', type: 'TEXT' } // keep in case table was created earlier without it
+    ];
+    for (const col of storeLateCols) {
+      if (!hasColumn(db, 'store_settings', col.name)) {
+        db.prepare(`ALTER TABLE store_settings ADD COLUMN ${col.name} ${col.type}`).run();
+      }
     }
+
+    if (!hasColumn(db, 'sales', 'invoice_no')) {
+      db.prepare(`ALTER TABLE sales ADD COLUMN invoice_no TEXT`).run();
+    }
+    if (!hasColumn(db, 'sales', 'payment_method')) {
+      db.prepare(`ALTER TABLE sales ADD COLUMN payment_method TEXT`).run();
+    }
+    if (!hasColumn(db, 'sales', 'customer_name')) {
+      db.prepare(`ALTER TABLE sales ADD COLUMN customer_name TEXT`).run();
+    }
+    if (!hasColumn(db, 'sales', 'customer_phone')) {
+      db.prepare(`ALTER TABLE sales ADD COLUMN customer_phone TEXT`).run();
+    }
+    if (!hasColumn(db, 'sales', 'customer_gstin')) {
+      db.prepare(`ALTER TABLE sales ADD COLUMN customer_gstin TEXT`).run();
+    }
+
+    // 3) Indexes — create only if missing
+    if (!hasIndex(db, 'products', 'idx_products_id')) {
+      db.prepare(`CREATE INDEX idx_products_id ON products(id DESC)`).run();
+    }
+    if (!hasIndex(db, 'products', 'idx_products_category')) {
+      db.prepare(`CREATE INDEX idx_products_category ON products(category)`).run();
+    }
+    if (!hasIndex(db, 'products', 'idx_products_sub_category')) {
+      db.prepare(`CREATE INDEX idx_products_sub_category ON products(sub_category)`).run();
+    }
+    if (!hasIndex(db, 'products', 'idx_products_brand')) {
+      db.prepare(`CREATE INDEX idx_products_brand ON products(brand)`).run();
+    }
+
+    // 4) One-time migrations using user_version
+    const v = getUserVersion(db);
+    if (v < 1) {
+      // Example of a future migration
+      setUserVersion(db, 1);
+    }
+  });
+
+  tx();
+  console.log('[DB] Schema init: idempotent setup complete');
+}
+
+try {
+  const Database = require('better-sqlite3');
+  const dbPath = resolvePosDbPath();
+  console.log("📁 [DEBUG] DB path resolved to:", dbPath);
+  db = new Database(dbPath);
+
+  try {
+    const jm = db.pragma('journal_mode = WAL');
+    console.log('[DB] PRAGMA journal_mode ->', jm);
+
+    db.pragma('foreign_keys = ON');
+    console.log('[DB] PRAGMA foreign_keys -> on');
+
+    db.pragma('synchronous = NORMAL');
+    console.log('[DB] PRAGMA synchronous -> normal');
   } catch (err) {
-    console.error("❌ Failed to check or add label_printer_name column:", err.message);
+    console.error('[DB] PRAGMA setup failed:', err);
   }
 
-  // ✅ Create invoice_counter table
-  db.prepare(`
-    CREATE TABLE IF NOT EXISTS invoice_counter (
-      id INTEGER PRIMARY KEY CHECK (id = 1),
-      current_number INTEGER DEFAULT 0
-    )
-  `).run();
-  // Initialize counter if it doesn't exist
-  db.prepare(`INSERT OR IGNORE INTO invoice_counter (id, current_number) VALUES (1, 0)`).run();
-
-  // ✅ Create invoice_daily_counter table
-  db.prepare(`
-    CREATE TABLE IF NOT EXISTS invoice_daily_counter (
-      id INTEGER PRIMARY KEY CHECK (id = 1),
-      last_reset_date TEXT NOT NULL,
-      current_daily_number INTEGER DEFAULT 0
-    )
-  `).run();
-  // Initialize daily counter if it doesn't exist
-  db.prepare(`INSERT OR IGNORE INTO invoice_daily_counter (id, last_reset_date, current_daily_number) VALUES (1, ?, 0)`).run(new Date().toISOString().slice(0, 10));
-
-  console.log("✅ SQLite DB initialized successfully.");
-// ⚡ Index boost for Products tab
-db.exec(`
-  CREATE INDEX IF NOT EXISTS idx_products_id ON products(id DESC);
-  CREATE INDEX IF NOT EXISTS idx_products_category ON products(category);
-  CREATE INDEX IF NOT EXISTS idx_products_sub_category ON products(sub_category);
-  CREATE INDEX IF NOT EXISTS idx_products_brand ON products(brand);
-`);
+  initSchema(db);
+  
 } catch (err) {
   console.error("❌ Failed to load better-sqlite3:", err);
   db = null;
@@ -277,7 +268,8 @@ function updateProduct(product) {
 
 // ✅ Save a full sale (sale + items with GST extracted from MRP)
 function saveSale(saleData) {
-  try {
+  //  atomically insert sale, sale_items, and update stock
+  const saveSaleTransaction = db.transaction((sale) => {
     const {
       invoice_no,
       timestamp,
@@ -286,26 +278,23 @@ function saveSale(saleData) {
       customer_phone,
       customer_gstin,
       items
-    } = saleData;
+    } = sale;
 
     if (!Array.isArray(items) || items.length === 0) {
       throw new Error("Sale must include items");
     }
 
     const enrichedItems = [];
-
     for (const i of items) {
       const price = i.price;
       const qty = i.quantity;
       const gstRate = i.gst_percent ?? 0;
-
       const totalMRP = price * qty;
       const divisor = 1 + gstRate / 100;
       const taxableValue = +(totalMRP / divisor).toFixed(2);
       const gstAmount = +(totalMRP - taxableValue).toFixed(2);
       const cgst = +(gstAmount / 2).toFixed(2);
       const sgst = +(gstAmount / 2).toFixed(2);
-
       enrichedItems.push({
         ...i,
         taxable_value: taxableValue,
@@ -317,7 +306,6 @@ function saveSale(saleData) {
 
     const total = enrichedItems.reduce((acc, i) => acc + i.taxable_value + i.gst_amount, 0);
 
-    // 🧠 Auto-add columns to sales if not present
     const salesCols = db.prepare("PRAGMA table_info(sales)").all().map(c => c.name);
     const neededCols = [
       { name: "invoice_no", type: "TEXT" },
@@ -329,7 +317,6 @@ function saveSale(saleData) {
     for (const col of neededCols) {
       if (!salesCols.includes(col.name)) {
         db.prepare(`ALTER TABLE sales ADD COLUMN ${col.name} ${col.type}`).run();
-        console.log(`✅ Added column to sales: ${col.name}`);
       }
     }
 
@@ -342,13 +329,12 @@ function saveSale(saleData) {
     const saleInfo = insertSale.run(
       total,
       timestamp,
-      invoice_no, // Use the provided invoice number
+      invoice_no,
       payment_method,
       customer_name || null,
       customer_phone || null,
       customer_gstin || null
     );
-
     const saleId = saleInfo.lastInsertRowid;
 
     const insertItem = db.prepare(`
@@ -358,36 +344,34 @@ function saveSale(saleData) {
         gst_amount, cgst, sgst
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-
-    const insertMany = db.transaction((items) => {
-      for (const i of items) {
-        insertItem.run(
-          saleId,
-          i.product_id || null, // Use the generated product_id string
-          i.name,
-          i.price,
-          i.quantity,
-          i.hsn_code || null,
-          i.gst_percent ?? null,
-          i.taxable_value,
-          i.gst_amount,
-          i.cgst,
-          i.sgst
-        );
-
-        if (i.id) {
-          db.prepare(`UPDATE products SET stock = stock - ? WHERE id = ?`)
-            .run(i.quantity, i.id);
-        }
+    for (const i of enrichedItems) {
+      insertItem.run(
+        saleId,
+        i.product_id || null,
+        i.name,
+        i.price,
+        i.quantity,
+        i.hsn_code || null,
+        i.gst_percent ?? null,
+        i.taxable_value,
+        i.gst_amount,
+        i.cgst,
+        i.sgst
+      );
+      if (i.id) {
+        db.prepare(`UPDATE products SET stock = stock - ? WHERE id = ?`).run(i.quantity, i.id);
       }
-    });
+    }
 
-    insertMany(enrichedItems);
+    return { sale_id: saleId, invoice_no: invoice_no };
+  });
 
+  try {
+    const result = saveSaleTransaction(saleData);
     return {
       success: true,
-      sale_id: saleId,
-      invoice_no: invoice_no // Send back the provided invoice number
+      sale_id: result.sale_id,
+      invoice_no: result.invoice_no
     };
   } catch (err) {
     console.error("❌ Failed to save sale:", err);
@@ -507,23 +491,31 @@ function getInvoices({ page = 1, limit = 15, startDate, endDate, searchQuery = '
 
 function getInvoicesForExport({ startDate, endDate, searchQuery = '' }) {
   try {
+    const params = {};
     let whereClauses = [];
-    let params = [];
+    let countWhereClauses = [];
 
     if (startDate) {
-      whereClauses.push(`date(s.timestamp) >= ?`);
-      params.push(startDate);
+      whereClauses.push(`date(s.timestamp) >= :startDate`);
+      countWhereClauses.push(`date(timestamp) >= :startDate`);
+      params.startDate = startDate;
     }
     if (endDate) {
-      whereClauses.push(`date(s.timestamp) <= ?`);
-      params.push(endDate);
+      whereClauses.push(`date(s.timestamp) < date(:endDate, '+1 day')`);
+      countWhereClauses.push(`date(timestamp) < date(:endDate, '+1 day')`);
+      params.endDate = endDate;
     }
     if (searchQuery) {
-      whereClauses.push(`(s.invoice_no LIKE ? OR s.customer_name LIKE ?)`);
-      params.push(`%${searchQuery}%`, `%${searchQuery}%`);
+      whereClauses.push(`(s.invoice_no LIKE :searchQuery OR s.customer_name LIKE :searchQuery)`);
+      countWhereClauses.push(`(invoice_no LIKE :searchQuery OR customer_name LIKE :searchQuery)`);
+      params.searchQuery = `%${searchQuery}%`;
     }
 
     const where = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+    const countWhere = countWhereClauses.length > 0 ? `WHERE ${countWhereClauses.join(' AND ')}` : '';
+
+    const countStmt = db.prepare(`SELECT COUNT(*) as count FROM sales ${countWhere}`);
+    const salesOnlyCount = countStmt.get(params).count;
 
     const stmt = db.prepare(`
       SELECT
@@ -541,12 +533,13 @@ function getInvoicesForExport({ startDate, endDate, searchQuery = '' }) {
         si.cgst,
         si.sgst
       FROM sales s
-      JOIN sale_items si ON s.id = si.sale_id
+      LEFT JOIN sale_items si ON s.id = si.sale_id
       ${where}
       ORDER BY s.timestamp ASC, s.invoice_no ASC
     `);
 
-    const data = stmt.all(...params);
+    const data = stmt.all(params);
+    console.log(`[DB] getInvoicesForExport salesOnlyCount: ${salesOnlyCount}, data.length: ${data.length}`);
     return { success: true, data };
 
   } catch (err) {
@@ -554,37 +547,6 @@ function getInvoicesForExport({ startDate, endDate, searchQuery = '' }) {
     return { success: false, data: [] };
   }
 }
-
-/*
-// 🧠 Safe schema patch for store_settings (runs only if columns are missing)
-try {
-  const storeCols = db.prepare(`PRAGMA table_info(store_settings)`).all().map(c => c.name);
-  const neededCols = [
-    { name: 'store_subtitle', type: 'TEXT' },
-    { name: 'store_phone', type: 'TEXT' },
-    { name: 'store_gstin', type: 'TEXT' },
-    { name: 'store_footer', type: 'TEXT' },
-    { name: 'store_fssai', type: 'TEXT' }
-  ];
-
-  neededCols.forEach(col => {
-    if (!storeCols.includes(col.name)) {
-      db.prepare(`ALTER TABLE store_settings ADD COLUMN ${col.name} ${col.type}`).run();
-      console.log(`✅ Added column: ${col.name} to store_settings`);
-    }
-  });
-
-  // Add schema versioning
-  if (!storeCols.includes('schema_version')) {
-      db.prepare(`ALTER TABLE store_settings ADD COLUMN schema_version TEXT DEFAULT '1.0'`).run();
-      db.prepare(`UPDATE store_settings SET schema_version = '1.1' WHERE id = 1`).run();
-      console.log(`✅ Added and updated schema_version to 1.1`);
-  }
-
-} catch (err) {
-  console.error("❌ Failed to patch store_settings schema:", err);
-}
-*/
 
 // ✅ Save or update the singleton store settings
 function saveStoreSettings(payload) {
@@ -701,8 +663,8 @@ function importDataDump(dump) {
         // 5. Insert store settings
         if (store_settings) {
             const settingsStmt = db.prepare(`
-                INSERT INTO store_settings (id, store_name, store_address, store_subtitle, store_phone, store_gstin, store_footer, store_fssai, schema_version)
-                VALUES (@id, @store_name, @store_address, @store_subtitle, @store_phone, @store_gstin, @store_footer, @store_fssai, @schema_version)
+                INSERT INTO store_settings (id, store_name, store_address, store_subtitle, store_phone, store_gstin, store_footer, store_fssai, schema_version, label_printer_name)
+                VALUES (@id, @store_name, @store_address, @store_subtitle, @store_phone, @store_gstin, @store_footer, @store_fssai, @schema_version, @label_printer_name)
             `);
             settingsStmt.run(store_settings);
             console.log('Imported store settings.');
@@ -823,6 +785,113 @@ function getProductById(id) {
   }
 }
 
+function getGSTSummary({ startDate, endDate, searchQuery = '' }) {
+  try {
+    const params = {};
+    const where = [];
+    if (startDate) { where.push(`date(s.timestamp) >= :startDate`); params.startDate = startDate; }
+    if (endDate)   { where.push(`date(s.timestamp) < date(:endDate, '+1 day')`); params.endDate = endDate; }
+    if (searchQuery) {
+      where.push(`(s.invoice_no LIKE :q OR s.customer_name LIKE :q)`); params.q = `%${searchQuery}%`;
+    }
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+    const stmt = db.prepare(`
+      SELECT
+        COALESCE(si.hsn_code, 'NA')                           AS hsn_code,
+        COALESCE(si.gst_percent, 0)                           AS gst_percent,
+        ROUND(SUM(si.taxable_value), 2)                       AS taxable_value,
+        ROUND(SUM(si.cgst), 2)                                AS cgst,
+        ROUND(SUM(si.sgst), 2)                                AS sgst,
+        ROUND(SUM(si.gst_amount), 2)                          AS gst_amount,
+        ROUND(SUM(si.taxable_value + si.gst_amount), 2)       AS total
+      FROM sales s
+      JOIN sale_items si ON si.sale_id = s.id
+      ${whereSql}
+      GROUP BY hsn_code, gst_percent
+      ORDER BY gst_percent, hsn_code
+    `);
+    const rows = stmt.all(params);
+    return { success: true, data: rows };
+  } catch (err) {
+    console.error('❌ Failed to build GST summary:', err);
+    return { success: false, data: [] };
+  }
+}
+
+function getUniqueSubCategories(categoryOrNull) {
+  try {
+    const normalize = (s) => (s ?? '').trim();
+
+    let rows;
+    if (categoryOrNull && normalize(categoryOrNull)) {
+      rows = db.prepare(`
+        SELECT DISTINCT TRIM(sub_category) AS sub_category
+        FROM products
+        WHERE sub_category IS NOT NULL
+          AND TRIM(sub_category) != ''
+          AND LOWER(TRIM(category)) = LOWER(TRIM(?))
+        ORDER BY sub_category
+      `).all(categoryOrNull);
+    } else {
+      rows = db.prepare(`
+        SELECT DISTINCT TRIM(sub_category) AS sub_category
+        FROM products
+        WHERE sub_category IS NOT NULL
+          AND TRIM(sub_category) != ''
+        ORDER BY sub_category
+      `).all();
+    }
+
+    // final sanitize + dedupe (belt & suspenders)
+    const set = new Set();
+    for (const r of rows) {
+      const sc = normalize(r.sub_category);
+      if (sc) set.add(sc);
+    }
+    return [...set];
+  } catch (err) {
+    console.error('❌ getUniqueSubCategories failed:', err);
+    return [];
+  }
+}
+
+function getGSTTotals({ startDate, endDate, searchQuery = '' }) {
+  try {
+    const params = {};
+    const where = [];
+    if (startDate) { where.push(`date(s.timestamp) >= :startDate`); params.startDate = startDate; }
+    if (endDate)   { where.push(`date(s.timestamp) < date(:endDate, '+1 day')`); params.endDate = endDate; }
+    if (searchQuery) {
+      where.push(`(s.invoice_no LIKE :q OR s.customer_name LIKE :q)`); params.q = `%${searchQuery}%`;
+    }
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+    const row = db.prepare(`
+      SELECT
+        ROUND(SUM(si.taxable_value), 2)                             AS total_taxable_value,
+        ROUND(SUM(si.gst_amount), 2)                                AS total_gst_amount,
+        ROUND(SUM(si.cgst), 2)                                      AS total_cgst,
+        ROUND(SUM(si.sgst), 2)                                      AS total_sgst,
+        ROUND(SUM(si.taxable_value + si.gst_amount), 2)             AS grand_total
+      FROM sales s
+      JOIN sale_items si ON si.sale_id = s.id
+      ${whereSql}
+    `).get(params) || {
+      total_taxable_value: 0, total_gst_amount: 0,
+      total_cgst: 0, total_sgst: 0, grand_total: 0
+    };
+
+    return { success: true, data: row };
+  } catch (err) {
+    console.error('❌ Failed to compute GST totals:', err);
+    return { success: false, data: {
+      total_taxable_value: 0, total_gst_amount: 0,
+      total_cgst: 0, total_sgst: 0, grand_total: 0
+    }};
+  }
+}
+
 module.exports = {
   db,
   getAllProducts,
@@ -840,5 +909,8 @@ module.exports = {
   exportDataDump,
   importDataDump,
   importProductsFromCSV,
-  getProductById
+  getProductById,
+  getGSTSummary,
+  getUniqueSubCategories,
+  getGSTTotals
 };

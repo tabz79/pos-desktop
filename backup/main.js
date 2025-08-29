@@ -3,98 +3,11 @@
 const { app, BrowserWindow, ipcMain, dialog, shell, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const crypto = require('crypto');
-const { machineIdSync } = require('node-machine-id');
 const ExcelJS = require('exceljs');
 const { printInvoice } = require('./printer');
 const { migrateDbToUserData } = require('./db-path');
 
 console.log("▶️ Electron app starting...");
-
-// --- Activation Gate ---
-const VENDOR_PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
-MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEAY2vRli003+ZhTkFyz9zYo4+W5ZJ
-kuCQSZyx0vxRRg/IQyKQFmfZHe0tyA93gpDfK9mWkQZuEqyAP7AJ9CfPwg==
------END PUBLIC KEY-----`;
-// ^^^ REPLACE the above PEM with the EXACT contents of your vendor_public_key.pem (including BEGIN/END lines)
-
-function getDeviceId() {
-  // Keep consistent with how licenses were generated (hashed machineId)
-  return machineIdSync(); // 64-hex hash by default (stable)
-}
-
-function checkActivation() {
-  const licensePath = path.join(app.getPath('userData'), 'license.json');
-  if (!fs.existsSync(licensePath)) {
-    return { active: false, message: 'License file not found.', reason: 'missing', licensePath };
-  }
-
-  try {
-    const raw = fs.readFileSync(licensePath, 'utf-8');
-    const license = JSON.parse(raw);
-    const { payload, signature } = license || {};
-
-    if (!payload || !signature) {
-      return { active: false, message: 'Bad license format.', reason: 'bad_format', licensePath };
-    }
-
-    // Use base64 (this matches how we generated license.json)
-    const ok = crypto.verify(
-      'sha256',
-      Buffer.from(JSON.stringify(payload)),
-      VENDOR_PUBLIC_KEY,
-      Buffer.from(signature, 'base64')
-    );
-    if (!ok) {
-      return { active: false, message: 'Invalid license signature.', reason: 'bad_signature', licensePath };
-    }
-
-    const currentId = getDeviceId();
-    if (payload.deviceId !== currentId) {
-      return { active: false, message: 'License is for a different device.', reason: 'device_mismatch', expected: currentId, got: payload.deviceId };
-    }
-
-    // Optional expiry check (0 = lifetime)
-    if (payload.exp && Number(payload.exp) > 0 && Date.now() > Number(payload.exp)) {
-      return { active: false, message: 'License expired.', reason: 'expired', licensePath };
-    }
-
-    return { active: true, reason: 'ok', licensePath };
-  } catch (error) {
-    return { active: false, message: 'Failed to read or parse license file.', reason: 'bad_read', error: String(error) };
-  }
-}
-
-function createActivationWindow(deviceId, failReason) {
-  const activationWindow = new BrowserWindow({
-    width: 520,
-    height: 440,
-    title: 'Activate SlipKit POS',
-    webPreferences: {
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: true,
-      preload: path.join(__dirname, 'preload.js'),
-    },
-  });
-
-  activationWindow.loadFile('activation.html');
-
-  ipcMain.handle('get-device-id', () => getDeviceId());
-
-  ipcMain.handle('save-license', async (_event, licenseJson) => {
-    try {
-      const licensePath = path.join(app.getPath('userData'), 'license.json');
-      fs.writeFileSync(licensePath, licenseJson);
-      app.relaunch();
-      app.quit();
-      return { success: true };
-    } catch (error) {
-      return { success: false, message: error.message };
-    }
-  });
-}
-
 
 // --- String helpers (safe for CSV/Excel) ---
 function csvSanitize(v) {
@@ -192,8 +105,13 @@ function buildMenu() {
 }
 
 // --- DB module load ---
-// NOTE: Moved into app.whenReady() AFTER activation passes.
-// let dbAPI; moved below
+let dbAPI;
+try {
+  dbAPI = require('./db');
+  console.log("✅ Database module loaded.");
+} catch (err) {
+  console.error("❌ Failed to load database:", err);
+}
 
 // --- Validation helpers for IPC ---
 const isString = v => typeof v === 'string';
@@ -239,7 +157,7 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1000,
     height: 700,
-    title: app.getName(),
+    title: app.getName(),            // ← add this
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -270,7 +188,7 @@ function generateBarcode(product) {
   }
 }
 
-async function regenerateAllBarcodes(dbAPI) {
+async function regenerateAllBarcodes() {
   if (!dbAPI) return;
   try {
     console.log('🔄 Clearing all existing barcode values...');
@@ -305,7 +223,7 @@ async function regenerateAllBarcodes(dbAPI) {
 }
 
 // --- Daily invoice number (compat with old renderer) ---
-async function getNextInvoiceNumber(dbAPI) {
+async function getNextInvoiceNumber() {
   // Uses table: invoice_daily_counter (id=1, last_reset_date TEXT, current_daily_number INTEGER)
   const today = new Date();
   const todayDateString = today.toISOString().slice(0, 10); // YYYY-MM-DD
@@ -345,36 +263,16 @@ async function getNextInvoiceNumber(dbAPI) {
 app.disableHardwareAcceleration();
 
 app.whenReady().then(async () => {
-  // Ensure userData path matches branded folder BEFORE using app.getPath('userData')
+  console.log("🚀 App is ready.");
   app.setName("SlipKit POS Suite");
+
+  // 👇 Windows identity (recommended)
   if (process.platform === 'win32') {
     app.setAppUserModelId('com.slipkit.pos');
   }
 
-  // ACTIVATE FIRST — nothing else runs before this
-  const res = checkActivation();
-  console.log('[ACT] userData =', app.getPath('userData'));
-  console.log('[ACT] deviceId(app) =', getDeviceId());
-  console.log('[ACT] verify result =', res);
-
-  if (!res.active) {
-    console.warn(`Activation check failed: ${res.message}`);
-    createActivationWindow(getDeviceId(), res.reason);
-    return; // critical: stop here (no DB, no windows)
-  }
-
-  console.log("🚀 App is ready.");
-
-  // --- DB module load (AFTER activation passes) ---
-  let dbAPI;
-  try {
-    dbAPI = require('./db');
-    console.log("✅ Database module loaded.");
-  } catch (err) {
-    console.error("❌ Failed to load database:", err);
-  }
-
   // ✅ Optional: auto-migrate DB to %APPDATA% on first run in production
+  // (safe no-op if already migrated; keeps writes out of the install dir)
   if (process.env.NODE_ENV === 'production') {
     try {
       const oldDb = path.join(process.cwd(), 'pos.db');
@@ -384,42 +282,24 @@ app.whenReady().then(async () => {
     }
   }
 
-  // Development-only helpers (keep disabled in prod)
   if (process.env.NODE_ENV !== 'production') {
-    // await regenerateAllBarcodes(dbAPI); // Uncomment in dev if needed
+    // await regenerateAllBarcodes(); // Uncomment for development if needed
   } else {
     console.warn('Production mode: Automatic barcode regeneration on boot is disabled.');
   }
 
   createWindow();
-    const __DEBUG_FLAG = process.argv.includes('--debug');
-  if (__DEBUG_FLAG && mainWindow && mainWindow.webContents) {
-    try {
-      mainWindow.webContents.openDevTools({ mode: 'detach' });
-      mainWindow.webContents.on('context-menu', (_e, params) => {
-        try { mainWindow.webContents.inspectElement(params.x, params.y); } catch {}
-      });
-    } catch {}
-  }
-  if (__DEBUG_FLAG) {
-    try { buildMenu(); } catch {}
-  } else {
-    try { Menu.setApplicationMenu(null); } catch {}
-  }
-// ✅ IPC Handlers
+  buildMenu();
+
+  // ✅ IPC Handlers
   if (!dbAPI) console.warn('[DB] not initialized — IPC will still validate but ops may fail');
 
   // 🔁 BARCODE: manual regeneration trigger (renderer calls invoke('regenerate-barcodes'))
   ipcMain.handle('regenerate-barcodes', safeHandler(null, async () => {
     if (!dbAPI) throw new Error('DB not initialized');
-    await regenerateAllBarcodes(dbAPI);
+    await regenerateAllBarcodes();
     return { success: true };
   }));
-
-  ipcMain.handle('generate-barcode', async (_evt, draft) => {
-    try { return generateBarcode(draft || {}); }
-    catch (e) { console.error('generate-barcode failed:', e); throw e; }
-  });
 
   // Dashboard/products
   ipcMain.handle('get-dashboard-stats', safeHandler(null, () => dbAPI.getDashboardStats()));
@@ -706,15 +586,9 @@ app.whenReady().then(async () => {
   });
 
   // Printer (invoice)
-  ipcMain.handle('print-invoice', async (_event, invoiceData) => {
+  ipcMain.on('print-invoice', (_event, invoiceData) => {
     console.log('Main: Received print-invoice IPC call. Passing data to printer.js');
-    try {
-      const result = await printInvoice(invoiceData);
-      return result;
-    } catch (error) {
-      console.error('Main: Error during print-invoice IPC call:', error);
-      return { success: false, message: error.message || 'Unknown printing error.' };
-    }
+    printInvoice(invoiceData);
   });
 
   // --- PRINTER ENUMERATION (fix for label printer list) ---
@@ -1095,7 +969,7 @@ app.whenReady().then(async () => {
   // 🧾 Register the missing handler used by old renderer
   ipcMain.handle('get-next-invoice-no', async () => {
     try {
-      return await getNextInvoiceNumber(dbAPI);
+      return await getNextInvoiceNumber();
     } catch (err) {
       console.error('❌ get-next-invoice-no failed:', err);
       throw err;

@@ -1,100 +1,6 @@
 
 /* --- injected: global no-drag safety net for inputs --- */
 document.addEventListener("DOMContentLoaded", () => {
-
-
-// === [INVOICE MODAL ESC CLOSE] ===
-(function(){
-  try {
-    if (!window.__invoiceEscInstalled) {
-      var esc = function(e){
-        if (e.key !== 'Escape') return;
-        var m = document.getElementById('invoice-modal');
-        var open = m && (!m.classList.contains('hidden') || (m.style && m.style.display && m.style.display !== 'none'));
-        if (!open) return;
-        e.preventDefault(); e.stopPropagation();
-        if (typeof closeInvoiceModalHard === 'function') closeInvoiceModalHard();
-      };
-      document.addEventListener('keydown', esc, true);
-      window.__invoiceEscInstalled = true;
-    }
-  } catch (e) { console.warn('invoice ESC close failed', e); }
-})();
-// === [/INVOICE MODAL ESC CLOSE] ===
-
-
-
-
-
-// === [INVOICE MODAL CAPTURE CLOSE] ===
-(function(){
-  try {
-    if (!window.__invoiceCloserCaptureInstalled) {
-      var handler = function(e){
-        var t = e.target && e.target.closest && e.target.closest('#close-invoice-btn, .btn-close, [data-action="close-invoice"]');
-        if (!t) return;
-        var m = document.getElementById('invoice-modal');
-        var open = m && (!m.classList.contains('hidden') || (m.style && m.style.display && m.style.display !== 'none'));
-        if (!open) return;
-        e.preventDefault(); e.stopPropagation();
-        if (typeof closeInvoiceModalHard === 'function') closeInvoiceModalHard();
-      };
-      document.body.addEventListener('click', handler, true);
-      window.__invoiceCloserCaptureInstalled = true;
-    }
-  } catch (e) { console.warn('invoice capture close failed', e); }
-})();
-// === [/INVOICE MODAL CAPTURE CLOSE] ===
-
-
-
-
-
-// [GEMINI] The INVOICE MODAL INTERACTIVITY GUARD (MutationObserver) was removed.
-// It was incorrectly re-applying styles, which prevented the modal from closing.
-
-
-
-
-
-// [GEMINI] The INVOICE MODAL GUARD WRAP was removed. 
-// Its cooldown logic was preventing the modal from re-opening and causing the UI to freeze.
-
-
-
-
-
-// === [INVOICE MODAL HARD CLOSE] ===
-(function(){
-  try {
-    if (typeof window.closeInvoiceModalHard !== 'function') {
-      window.closeInvoiceModalHard = function(){
-        try {
-          window.__closingInvoice = true;
-          var m = document.getElementById('invoice-modal');
-          if (m) {
-            m.classList.add('hidden');
-            m.style.display = 'none';
-            m.style.pointerEvents = 'none';
-            m.style.opacity = '';
-            m.style.visibility = '';
-          }
-          // [GEMINI FIX] Re-enable pointer events on the cart overlay.
-          const cartOverlay = document.getElementById('cartOverlay');
-          if (cartOverlay) {
-            cartOverlay.style.pointerEvents = 'auto';
-          }
-        } finally {
-          setTimeout(function(){ window.__closingInvoice = false; }, 120);
-        }
-      };
-    }
-  } catch (e) { console.warn('closeInvoiceModalHard install failed', e); }
-})();
-// === [/INVOICE MODAL HARD CLOSE] ===
-
-
-
   try {
     const s = document.createElement('style');
     s.textContent = `
@@ -153,14 +59,23 @@ function parsePriceFromModel(model_name = '') {
   return null;
 }
 
-// [GEMINI FIX] Moved this function to the global scope to fix a ReferenceError.
-// Helper to safely show/hide overlays and manage pointer events
-function setOverlayVisible(id, visible) { 
-  const el = document.getElementById(id); 
-  if (el) { 
-    el.style.pointerEvents = visible ? 'auto' : 'none'; 
-    el.classList.toggle('hidden', !visible); 
-  } 
+let barcodeCounter = 0;
+
+function generateBarcode(product) {
+  try {
+    const category = (product.category || 'UNK').substring(0, 3).toUpperCase().padEnd(3, 'X');
+    const name = (product.name || 'NA').substring(0, 2).toUpperCase().padEnd(2, 'X');
+    const subCategory = (product.sub_category || '_').substring(0, 1).toUpperCase();
+    const brand = (product.brand || 'XX').substring(0, 2).toUpperCase().padEnd(2, 'X');
+    const model = (product.model_name ? product.model_name.split('-')[0] : 'ZZ').substring(0, 2).toUpperCase().padEnd(2, 'Z');
+
+    const counter = (++barcodeCounter).toString().padStart(5, '0');
+
+    return `${category}${name}${subCategory}${brand}${counter}${model}`;
+  } catch (error) {
+    console.error("Failed to generate barcode for", product.name, error);
+    return "ERROR";
+  }
 }
 
 
@@ -250,7 +165,8 @@ document.body.addEventListener('click', function(e) {
       document.head.append(modalFixStyle);
     } catch (_e) { /* noop */ }
   })();
-  // [GEMINI] Moved setOverlayVisible to global scope to fix ReferenceError.
+// Helper to safely show/hide overlays and manage pointer events
+  function setOverlayVisible(id, visible) { const el = document.getElementById(id); if (el) { el.style.pointerEvents = visible ? 'auto' : 'none'; el.classList.toggle('hidden', !visible); } }
 
   // Persistent, delegated event listener for the label print modal
   document.body.addEventListener('click', async (event) => {
@@ -431,6 +347,71 @@ function coerceProductPayload(p) {
     : toNum(q.gst_percent, 0);
   return q;
 }
+
+
+// --- force-refresh products table (safe to call from anywhere)
+async function forceRefreshProducts() {
+  try {
+    const fresh = await window.api.getProducts();
+    window.allProducts = Array.isArray(fresh) ? fresh : [];
+    window.productsLoaded = true;
+    window.productCache = window.allProducts;
+    const tableEl = document.getElementById('productTable');
+    if (typeof window.renderProducts === 'function' && tableEl) {
+      await window.renderProducts(window.allProducts);
+    } else if (typeof window.applyProductFilters === 'function') {
+      window.applyProductFilters();
+    }
+    window.dispatchEvent(new CustomEvent('products:updated', { detail: { count: window.allProducts.length } }));
+  } catch (e) { console.warn('forceRefreshProducts failed', e); }
+}
+
+
+
+// --- helper: add product with unique-id retry on SQLITE_CONSTRAINT ---
+async function addProductWithUniqueRetries(payload, maxTries = 5) {
+  let attempt = 0;
+  let lastErr = null;
+  while (attempt < maxTries) {
+    try {
+      const res = await window.api.addProduct(coerceProductPayload(payload));
+      if (res && res.success) return res;
+
+      // If main process returns structured error
+      const msg = (res && res.message) ? String(res.message) : '';
+      const looksUniqueFail = msg.includes('UNIQUE constraint failed: products.barcode_value')
+                           || msg.includes('UNIQUE constraint failed: products.product_id');
+      if (!looksUniqueFail) return res || { success: false, message: 'Unknown error' };
+
+      // regenerate IDs and retry
+      attempt++;
+      const suffix = String(Math.floor(Math.random() * 10000)).padStart(4, '0');
+      const base = (payload.barcode_value || payload.product_id || 'SKU').replace(/[^A-Z0-9]/gi, '').slice(0, 10);
+      payload.barcode_value = base + suffix;
+      payload.product_id = payload.barcode_value;
+      console.warn(`[addProductWithUniqueRetries] Collision on unique IDs. Retrying ${attempt}/${maxTries} with ${payload.product_id}`);
+    } catch (e) {
+      // If IPC threw, inspect message
+      const msg = e && e.message ? String(e.message) : '';
+      const looksUniqueFail = msg.includes('UNIQUE constraint failed: products.barcode_value')
+                           || msg.includes('UNIQUE constraint failed: products.product_id');
+      if (!looksUniqueFail) {
+        lastErr = e;
+        break;
+      }
+      attempt++;
+      const suffix = String(Math.floor(Math.random() * 10000)).padStart(4, '0');
+      const base = (payload.barcode_value || payload.product_id || 'SKU').replace(/[^A-Z0-9]/gi, '').slice(0, 10);
+      payload.barcode_value = base + suffix;
+      payload.product_id = payload.barcode_value;
+      console.warn(`[addProductWithUniqueRetries] IPC unique constraint. Retrying ${attempt}/${maxTries} with ${payload.product_id}`);
+      lastErr = e;
+    }
+  }
+  return { success: false, message: (lastErr && lastErr.message) || 'Failed after unique-id retries' };
+}
+
+
 
 
  // Initialize currentTab globally
@@ -1185,43 +1166,7 @@ window.handleNextInvoice = async function() {
   // --- FIX END: Robust invoice navigation ---
 };
 
-function debounce(fn, ms=250){let t;return (...a)=>{clearTimeout(t);t=setTimeout(()=>fn(...a),ms);}}
-function wireAddProductModalBarcode(modalEl){
-  if(!modalEl) return;
-  const $category    = modalEl.querySelector('#productCategory');
-  const $subCategory = modalEl.querySelector('#productSubCategory');
-  const $brand       = modalEl.querySelector('#productBrand');
-  const $model       = modalEl.querySelector('#productModel');
-  const $name        = modalEl.querySelector('#productName');
-  const $price       = modalEl.querySelector('#productPrice');
-  const $barcode     = modalEl.querySelector('#productBarcode');
-  const $barcodeView = modalEl.querySelector('#productBarcodePreview');
-  if(!$barcode) return;
-  let autoMode = !$barcode.value?.trim();
-  $barcode.addEventListener('input', ()=>{ autoMode=false; });
-  const collect = () => ({
-    category: $category?.value?.trim()||'',
-    sub_category: $subCategory?.value?.trim()||'',
-    brand: $brand?.value?.trim()||'',
-    model_name: $model?.value?.trim()||'',
-    name: $name?.value?.trim()||'',
-    price: Number($price?.value)||0,
-  });
-  const refresh = debounce(async ()=>{
-    if(!autoMode) return;
-    try{
-      const code = await window.api.generateBarcode(collect());
-      if(code && autoMode){
-        $barcode.value = code;
-        if($barcodeView) $barcodeView.textContent = code;
-      }
-    }catch(e){ console.error('live barcode failed', e); }
-  },250);
-  [$category,$subCategory,$brand,$model,$name,$price].forEach(el=>{
-    if(!el) return; el.addEventListener('input',refresh); el.addEventListener('change',refresh);
-  });
-  refresh();
-}
+
 
 function setupProductView() {
   let currentPage = 1; // Current page for product pagination
@@ -1409,7 +1354,7 @@ function setupProductView() {
   const barcodeValueInput = document.getElementById("productBarcodeValue");
 
   // ✅ START: FIX FOR ISSUE #1 and #2
-  async function updateGeneratedIds() {
+  function updateGeneratedIds() {
     const tempProduct = {
       name: nameInput.value,
       category: categorySelect.value,
@@ -1417,7 +1362,7 @@ function setupProductView() {
       brand: brandInput.value,
       model_name: modelNameInput.value,
     };
-    const barcode = await window.api.generateBarcode(tempProduct);
+    const barcode = generateBarcode(tempProduct);
     barcodeValueInput.value = barcode;
     productIdInput.value = barcode;
   }
@@ -1486,7 +1431,6 @@ function setupProductView() {
     modalTitle.textContent = "Add Product";
     setOverlayVisible('productModal', true);
     if (fixedCart) fixedCart.style.display = "none";
-    wireAddProductModalBarcode(modal);
   });
 
   cancelBtn.addEventListener("click", () => {
@@ -1510,7 +1454,7 @@ function setupProductView() {
     // This is a slight bug in the original code. `payload` is not defined yet.
     // It should generate the barcode from the collected constants.
     const tempPayloadForBarcode = { name, category, sub_category, brand, model_name };
-    const barcode_value = await window.api.generateBarcode(tempPayloadForBarcode);
+    const barcode_value = generateBarcode(tempPayloadForBarcode);
 
     if (!name || isNaN(price) || isNaN(stock)) {
       showToast("⚠️ Please fill all fields correctly.");
@@ -1537,21 +1481,27 @@ function setupProductView() {
       payload.id = editingProductId;
       result = await window.api.updateProduct(payload);
     } else {
-      result = await window.api.addProduct(coerceProductPayload(payload));
+      result = await addProductWithUniqueRetries(payload);
     }
 
     if (result.success) {
       showToast(editingProductId ? "✏️ Product updated!" : "✅ Product added!");
+
+      try {
+        document.getElementById('searchInput').value = '';
+        document.getElementById('filterCategory').value = '';
+        document.getElementById('filterSubCategory').value = '';
+        document.getElementById('filterSubCategory').disabled = true;
+        currentPage = 1;
+        await forceRefreshProducts();
+      } catch (e) {
+        console.warn('refresh Products failed', e);
+      }
+
       setOverlayVisible('productModal', false);
       if (fixedCart) fixedCart.style.display = "block";
-
-      // Force a refresh of the product view
-      if (currentTab === 'Products') {
-        productCache = null; // Invalidate the cache
-        await renderView('Products'); // Re-render the entire view
-      }
     } else {
-      showToast("❌ Failed to save product.", 'error');
+      showToast(`❌ Failed to save product${result && result.message ? ': ' + result.message : ''}.`, 'error');
     }
   });
 
@@ -1963,7 +1913,19 @@ async function renderView(viewName) {
 
     await renderSalesProducts(allProducts, currentSalesPage, itemsPerSalesPage); // Initial render of all products
 
-    // [GEMINI] The checkout button listener was moved to DOMContentLoaded to prevent duplicate attachments.
+    const checkoutBtn = document.querySelector("#fixed-cart-ui #checkoutBtn");
+    if (checkoutBtn) {
+      // 🛒 Step 2C — Show Cart Overlay on button click
+      checkoutBtn.addEventListener("click", () => {
+        const cartOverlay = document.getElementById("cartOverlay");
+        if (cartOverlay) {
+          setOverlayVisible('cartOverlay', true);
+          renderCartOverlay();
+        } else {
+          completeSaleAndPrint();
+        }
+      });
+    }
 
     
   }
@@ -2430,36 +2392,6 @@ async function renderCartOverlay() {
   // ✅ Call footer update here
   updateCartSummaryFooter();
 
-  const quotationBtn = document.getElementById("quotationBtn");
-  const previewBtn   = document.getElementById("previewInvoiceBtn");
-  const checkoutBtn  = document.getElementById("cartCheckoutBtn");
-
-  if (checkoutBtn) checkoutBtn.disabled = (cart.length === 0);
-
-  if (quotationBtn) {
-    quotationBtn.onclick = async () => {
-      if (!cart.length) return showToast("🛒 Cart is empty.");
-      await completeSaleAndPrint(true);
-    };
-  }
-
-  if (previewBtn) {
-    previewBtn.onclick = async () => {
-      if (!cart.length) return showToast("🛒 Cart is empty.");
-      await populateInvoiceModal([...cart], activeInvoiceNo || 'PREVIEW', false);
-      setOverlayVisible('invoice-modal', true);
-      const m = document.getElementById('invoice-modal');
-      if (m) { m.style.display = 'flex'; m.style.zIndex = '2000'; }
-    };
-  }
-
-  if (checkoutBtn) {
-    checkoutBtn.onclick = () => {
-      if (!cart.length) return showToast("🛒 Cart is empty.");
-      completeSaleAndPrint(false);
-    };
-  }
-
   // Minimal function definition for post-print cleanup
   function doPostPrintCleanup(result) {
       console.log("Post print cleanup done.", result);
@@ -2529,11 +2461,11 @@ async function renderCartOverlay() {
   const customerName = document.getElementById("custName")?.value || "";
   const customerPhone = document.getElementById("custPhone")?.value || "";
   const gstin = document.getElementById("custGSTIN")?.value?.trim() || null;
-  const invoiceNo = activeInvoiceNo;
+  const invoiceNo = document.getElementById("customerInvoiceNo")?.value || generateInvoiceNumber();
   const paymentMethod = document.getElementById("paymentMode")?.value?.trim() || "Cash";
 
-  if (!isQuotation && cart.length === 0) {
-    showToast("🛒 Cart is empty.");
+  if (!isQuotation && (!invoiceNo || cart.length === 0)) {
+    showToast(cart.length === 0 ? "🛒 Cart is empty." : "⚠️ Invoice number missing.");
     return;
   }
 
@@ -2646,10 +2578,41 @@ async function renderCartOverlay() {
   }
 }
 
-  // [GEMINI] This listener was removed and centralized in the renderCartOverlay function.
+  const confirmBtn = document.getElementById("cartCheckoutBtn");
+  if (confirmBtn) {
+	  confirmBtn.disabled = false; // 👈 this is what’s missing!
+    confirmBtn.onclick = () => completeSaleAndPrint(false);
+  }
 
-  // [GEMINI] Moved window assignments to global scope to fix race condition with bridge script.
-// [GEMINI] This listener was removed and centralized in the renderCartOverlay function.
+  window.getCart = () => cart;
+  window.populateInvoiceModal = populateInvoiceModal;
+  window.completeSaleAndPrint = completeSaleAndPrint;
+// ✅ Wire Preview Invoice button ONCE when overlay is rendered
+const previewBtn = document.getElementById("previewInvoiceBtn");
+if (previewBtn) {
+  previewBtn.onclick = () => {
+    try {
+      if (cart.length === 0) {
+        showToast("🛒 Cart is empty.");
+        return;
+      }
+      populateInvoiceModal([...cart], activeInvoiceNo || Date.now());
+      const invoiceModal = document.getElementById('invoice-modal');
+      const cartOverlay = document.getElementById('cartOverlay');
+      if (invoiceModal) {
+        setOverlayVisible('invoice-modal', true);
+        invoiceModal.style.display = 'flex';
+        invoiceModal.style.zIndex = '2000';
+        if (cartOverlay) {
+            cartOverlay.style.pointerEvents = 'none';
+        }
+      }
+    } catch (err) {
+      console.error('Error rendering invoice preview:', err);
+      showToast("❌ Error generating preview.");
+    }
+  };
+}
   // Attach Global Discount Button (after overlay renders)
 const globalDiscountBtn = document.getElementById("applyGlobalDiscountBtn");
 const globalDiscountTypeEl = document.getElementById("globalDiscountType");
@@ -3005,20 +2968,6 @@ document.querySelectorAll(".nav-btn").forEach((btn) => {
   });
 });
 
-  // [GEMINI] Attach listener for the main cart button ONCE to prevent duplicates.
-  const checkoutBtn = document.getElementById("checkoutBtn");
-  if (checkoutBtn) {
-    checkoutBtn.addEventListener("click", () => {
-      const cartOverlay = document.getElementById("cartOverlay");
-      if (cart.length > 0 && cartOverlay) {
-        setOverlayVisible('cartOverlay', true);
-        renderCartOverlay();
-      } else if (cart.length === 0) {
-        showToast("🛒 Cart is empty.");
-      }
-    });
-  }
-
   await renderView("Dashboard"); // Initial load
 
   window.showPrintLabelModal = async function(productId) {
@@ -3136,7 +3085,7 @@ async function printLabel(productId) {
 
               /* ✅ Lock X, gently lift Y so first line shows, last line doesn't clip */
               position: relative;
-              left: -8mm;     /* X locked (your sweet spot) */
+              left: -7mm;     /* X locked (your sweet spot) */
               top:  -0.4mm;     /* subtle lift; avoids clipping store name */
               transform: none;
             }
@@ -3165,10 +3114,10 @@ async function printLabel(productId) {
               direction: ltr;
             }
             .barcode-img {
-              width: 30mm;
+              width: 32mm;
               height: 5mm;
               margin-top: 0.2mm;   /* shave a bit to keep bottom tight */
-              margin-left: -2mm;
+              margin-left: 0mm;
             }
             .barcode-text { 
               font-size: 6pt; 
@@ -3432,12 +3381,3 @@ async function populateInvoiceModal(items = [], invoiceNo = '0000') {
     new MutationObserver(sync).observe(m, { attributes: true, attributeFilter: ['class','style'] });
   } catch (e) { console.warn('invoice-modal guard error:', e); }
 })();
-
-// [GEMINI FIX] Assign crucial functions to the window object in the global scope.
-// This resolves the race condition where the bridge script would execute before the DOMContentLoaded
-// listener in this script had a chance to create these assignments.
-window.getCart = () => cart;
-window.getAllProducts = () => allProducts;
-window.populateInvoiceModal = populateInvoiceModal;
-window.setOverlayVisible = setOverlayVisible;
-window.showToast = window.showToast; // Ensure the already defined showToast is explicitly on window

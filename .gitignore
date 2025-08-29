@@ -6,3 +6,13 @@ styles/output.css
 inv-80mm.jpg
 SFT103.png
 tailwindcss.exe
+vendor_private_key.pem
+tools/private-key.pem
+license.json
+/dist/
+*.exe
+*.blockmap
+*.asar
+*.db
+# local db
+pos.db*

@@ -1,66 +1,18 @@
 
-// --- START: NEW BARCODE SCANNER IMPLEMENTATION ---
+/* --- injected: global no-drag safety net for inputs --- */
 document.addEventListener("DOMContentLoaded", () => {
-  const SCANNER_TIMEOUT = 50; // ms between keystrokes
-  let barcodeBuffer = '';
-  let lastKeyTime = 0;
+  try {
+    const s = document.createElement('style');
+    s.textContent = `
+      body, #app, * { -webkit-app-region: no-drag; }
+      .titlebar, .drag { -webkit-app-region: drag; }
+    `;
+    document.head.appendChild(s);
+  } catch (e) { console.warn('no-drag style inject failed', e); }
+}, { once: true });
+/* --- end inject --- */
 
-  window.addEventListener('keydown', (e) => {
-    // 1. Only run logic if we are on the Sales tab.
-    // We check this via a DOM element unique to the sales view.
-    const salesViewActive = !!document.getElementById('salesProductList');
-    if (!salesViewActive) {
-      barcodeBuffer = ''; // Reset buffer when not on sales tab
-      return;
-    }
-
-    // 2. Prevent default browser action for scanner-like keys.
-    // This is the core of the fix. It stops the browser from interpreting
-    // the scan as navigation or button clicks.
-    if (e.key === 'Enter' || e.key.length === 1) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-
-    const now = Date.now();
-    // Reset buffer if keys are typed too slowly
-    if (now - lastKeyTime > SCANNER_TIMEOUT) {
-      barcodeBuffer = '';
-    }
-
-    if (e.key === 'Enter') {
-      if (barcodeBuffer.length > 0) {
-        console.log(`[SCAN] Detected barcode: ${barcodeBuffer}`);
-        // Use the 'send' method exposed on the context bridge to talk to main.js
-        window.postMessage({ type: 'ipc-send', channel: 'barcode-scan-request', args: [barcodeBuffer] });
-      }
-      barcodeBuffer = ''; // Clear buffer after Enter
-    } else if (e.key.length === 1) {
-      // It's a character key, add it to the buffer.
-      barcodeBuffer += e.key;
-    }
-    
-    lastKeyTime = now;
-  }, true); // Use CAPTURE phase to get the event before other listeners.
-});
-
-// New listener for the response from main process
-window.addEventListener('message', (event) => {
-  if (event.source === window && event.data.type === 'ipc-reply' && event.data.channel === 'barcode-scan-response') {
-    const product = event.data.args[0];
-    if (product) {
-      console.log('[SCAN] Received product:', product.name);
-      // This addToCart function is defined later in this file.
-      // It correctly handles adding a new item or incrementing quantity.
-      addToCart(product.id, product.name, product.price);
-      showToast(`✅ Added ${product.name} from scan`);
-    } else {
-      console.log('[SCAN] Product not found for scanned barcode.');
-      showToast('❌ Product not found by scan.');
-    }
-  }
-});
-// --- END: NEW BARCODE SCANNER IMPLEMENTATION ---
+// (removed duplicate scanner block to prevent double listeners)
 
 /**
  * Generates a product_id and barcode_value based on product details.
@@ -111,17 +63,15 @@ let barcodeCounter = 0;
 
 function generateBarcode(product) {
   try {
-    const category = (product.category || 'UNK').substring(0, 2).toUpperCase().padEnd(2, 'X'); // 2 chars
-    // const name = (product.name || 'NA').substring(0, 2).toUpperCase().padEnd(2, 'X'); // Removed
-    const subCategory = (product.sub_category || '_').substring(0, 1).toUpperCase(); // 1 char
-    const brand = (product.brand || 'XX').substring(0, 2).toUpperCase().padEnd(2, 'X'); // 2 chars
-    const model = (product.model_name ? product.model_name.split('-')[0] : 'ZZ').substring(0, 2).toUpperCase().padEnd(2, 'Z'); // 2 chars
-    // Ensure model is always 2 chars, even if split result is shorter or empty
+    const category = (product.category || 'UNK').substring(0, 3).toUpperCase().padEnd(3, 'X');
+    const name = (product.name || 'NA').substring(0, 2).toUpperCase().padEnd(2, 'X');
+    const subCategory = (product.sub_category || '_').substring(0, 1).toUpperCase();
+    const brand = (product.brand || 'XX').substring(0, 2).toUpperCase().padEnd(2, 'X');
+    const model = (product.model_name ? product.model_name.split('-')[0] : 'ZZ').substring(0, 2).toUpperCase().padEnd(2, 'Z');
 
-    const counter = (++barcodeCounter).toString().padStart(4, '0'); // 4 digits
+    const counter = (++barcodeCounter).toString().padStart(5, '0');
 
-    // New order: category (2) + subCategory (1) + brand (2) + counter (4) + model (2) = 11 chars
-    return `${category}${subCategory}${brand}${counter}${model}`;
+    return `${category}${name}${subCategory}${brand}${counter}${model}`;
   } catch (error) {
     console.error("Failed to generate barcode for", product.name, error);
     return "ERROR";
@@ -147,6 +97,77 @@ function applySalesFilters() {
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
+  
+
+// --- Delegated close handler for invoice/quotation modal ---
+document.body.addEventListener('click', function(e) {
+  var closeBtn = e.target.closest('#close-invoice-btn');
+  if (closeBtn) {
+    try { setOverlayVisible('invoice-modal', false); }
+    catch (_e) {
+      var modal = document.getElementById('invoice-modal');
+      if (modal) { modal.classList.add('hidden'); modal.style.pointerEvents = 'none'; }
+    }
+    const cartOverlay = document.getElementById('cartOverlay');
+    if (cartOverlay) {
+        // Re-enable pointer events on the cart overlay when the invoice modal is closed.
+        cartOverlay.style.pointerEvents = 'auto';
+    }
+    e.preventDefault();
+    e.stopPropagation();
+  }
+});
+
+// --- START: Robust Toast Utility ---
+  if (typeof window.showToast !== 'function') {
+    const toastEl = document.createElement('div');
+    toastEl.id = 'gemini-toast';
+    toastEl.style.cssText = `
+      position: fixed; top: 20px; right: 20px;
+      background-color: #333; color: white;
+      padding: 10px 20px; border-radius: 8px;
+      z-index: 2147483647;
+      opacity: 0;
+      transition: opacity 0.3s ease-in-out;
+      -webkit-app-region: no-drag;
+      pointer-events: all;
+    `;
+    document.body.appendChild(toastEl);
+
+    window.showToast = (message, type = 'info') => {
+      toastEl.textContent = message;
+      // why: Use color to distinguish success/error toasts.
+      const isError = type === 'error' || message.startsWith('❌');
+      toastEl.style.backgroundColor = isError ? '#d9534f' : '#333';
+      toastEl.style.opacity = '1';
+      setTimeout(() => {
+        toastEl.style.opacity = '0';
+      }, 3000);
+    };
+  }
+  // --- END: Robust Toast Utility ---
+  // Inject CSS to make form controls clickable in a frameless window
+  const style = document.createElement('style');
+  style.textContent = `input, textarea, select, button, .nav-btn { -webkit-app-region: no-drag; }`;
+  document.head.append(style);
+
+  
+  // --- Modal clickability hardening (quotation/invoice) ---
+  (function(){
+    try {
+      var modalFixStyle = document.createElement('style');
+      modalFixStyle.textContent = [
+        '#invoice-modal, #invoice-modal * { -webkit-app-region: no-drag; }',
+        '#invoice-modal #close-invoice-btn, #invoice-modal .close, #invoice-modal .btn-close { cursor: pointer; }',
+        '#invoice-modal, #invoice-modal * { cursor: default; }',
+        '#invoice-modal input, #invoice-modal textarea { cursor: text; }'
+      ].join('\n');
+      document.head.append(modalFixStyle);
+    } catch (_e) { /* noop */ }
+  })();
+// Helper to safely show/hide overlays and manage pointer events
+  function setOverlayVisible(id, visible) { const el = document.getElementById(id); if (el) { el.style.pointerEvents = visible ? 'auto' : 'none'; el.classList.toggle('hidden', !visible); } }
+
   // Persistent, delegated event listener for the label print modal
   document.body.addEventListener('click', async (event) => {
     const printBtn = event.target.closest('#printLabelBtn');
@@ -161,10 +182,10 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (productId) {
         event.stopPropagation();
         await printLabel(productId);
-        modal.classList.add('hidden');
+        setOverlayVisible('printLabelModal', false);
       }
     } else if (cancelBtn && modal) {
-      modal.classList.add('hidden');
+      setOverlayVisible('printLabelModal', false);
     }
   });
 
@@ -252,6 +273,33 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (now - lastTs > SCAN_CHAR_WINDOW_MS) reset();
   }, true); // capture:true so we intercept before UI reacts
 })();
+
+/* --- injected: ESC overlay teardown --- */
+(function(){
+  let _escBound=false;
+  if(!_escBound){
+    _escBound=true;
+    window.addEventListener('keydown', function(e){
+      if(e.key === 'Escape'){
+        ['productModal','printLabelModal','cartOverlay','invoice-modal'].forEach(function(id){
+          var el = document.getElementById(id);
+          if(el){
+            try{
+              if (typeof setOverlayVisible === 'function') {
+                setOverlayVisible(id, false);
+              } else {
+                el.classList.add('hidden');
+                el.style.pointerEvents = 'none';
+              }
+            }catch(err){ console.warn('ESC hide failed for', id, err); }
+          }
+        });
+      }
+    }, true);
+  }
+})();
+/* --- end inject --- */
+
 /// --- END: Keyboard-wedge barcode scanner shield ---
   window.api.onBarcodeScanned(async (product) => {
     // BUG FIX: Dashboard scans do nothing & Sales-tab scans during tab switch fail
@@ -569,7 +617,7 @@ function renderSalesPaginationControls(totalPages) {
               <span class="text-sm font-medium">Quick Filters:</span>
               <button id="today-filter-btn" class="text-xs bg-gray-200 px-2 py-1 rounded hover:bg-gray-300">Today</button>
               <button id="this-week-filter-btn" class="text-xs bg-gray-200 px-2 py-1 rounded hover:bg-gray-300">This Week</button>
-              <button id="export-csv-btn" class="text-xs bg-green-500 text-white px-2 py-1 rounded hover:bg-green-600 ml-auto">Export CSV</button>
+              <button id="export-csv-btn" class="text-xs bg-green-500 text-white px-2 py-1 rounded hover:bg-green-600 ml-auto">Download GST Report</button>
           </div>
         </div>
         <table class="w-full bg-white shadow rounded text-sm text-left">
@@ -836,19 +884,9 @@ async function setupInvoiceHistoryView() {
             const result = await window.api.exportInvoicesCsv(options);
 
             if (result.success) {
-                const blob = new Blob([result.csv], { type: 'text/csv;charset=utf-8;' });
-                const link = document.createElement('a');
-                const url = URL.createObjectURL(blob);
-                link.setAttribute('href', url);
-                const fileName = `GST_Export_${options.startDate || 'all'}_to_${options.endDate || 'all'}.csv`;
-                link.setAttribute('download', fileName);
-                link.style.visibility = 'hidden';
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                showToast('✅ CSV Export downloaded.');
+                showToast('✅ GST Report generated and opened.');
             } else {
-                showToast('❌ Failed to export CSV: ' + result.error, 'error');
+                showToast('❌ Failed to generate report: ' + result.message, 'error');
             }
         });
     }
@@ -958,9 +996,10 @@ window.viewInvoice = async function(id) {
     // --- FIX START: Make modal visible ---
     if (invoiceModal) {
       console.log('DEBUG-INVOICE-MODAL: Modal classList before show logic:', invoiceModal.classList.value);
-      invoiceModal.classList.remove('hidden');
-      invoiceModal.style.display = 'flex';
+      setOverlayVisible('invoice-modal', true);
       // Clear inline styles that might be hiding the modal
+      invoiceModal.style.display = 'flex';
+      invoiceModal.style.zIndex = '100';
       invoiceModal.style.visibility = '';
       invoiceModal.style.opacity = '';
       console.log('DEBUG-INVOICE-MODAL: Modal classList after show logic:', invoiceModal.classList.value);
@@ -980,18 +1019,14 @@ window.viewInvoice = async function(id) {
     // Wire Next/Prev buttons and update their state
     const prevBtn = document.getElementById('prev-invoice-btn');
     const nextBtn = document.getElementById('next-invoice-btn');
-    const closeBtn = document.getElementById('close-invoice-btn'); // Get close button to re-wire
 
     // Remove existing listeners to prevent multiple bindings
     if (prevBtn) prevBtn.removeEventListener('click', window.handlePrevInvoice);
     if (nextBtn) nextBtn.removeEventListener('click', window.handleNextInvoice);
-    if (closeBtn) closeBtn.removeEventListener('click', window.handleCloseInvoiceModal); // Assuming a handler for close
 
     // Add new listeners
     if (prevBtn) prevBtn.addEventListener('click', window.handlePrevInvoice);
     if (nextBtn) nextBtn.addEventListener('click', window.handleNextInvoice);
-    // Re-wire close button to ensure it works after navigation setup
-    if (closeBtn) closeBtn.addEventListener('click', window.handleCloseInvoiceModal);
 
     window.updateModalNavigationButtons();
   } else {
@@ -1046,18 +1081,7 @@ window.handleNextInvoice = async function() {
   // --- FIX END: Robust invoice navigation ---
 };
 
-// Handler for closing the invoice modal (to ensure it's re-wired correctly)
-window.handleCloseInvoiceModal = function() {
-  const invoiceModal = document.getElementById('invoice-modal');
-  if (invoiceModal) {
-    // --- FIX START: Proper modal close ---
-    invoiceModal.classList.add('hidden');
-    invoiceModal.style.display = ''; // Reset display
-    invoiceModal.style.visibility = ''; // Reset visibility
-    invoiceModal.style.opacity = ''; // Reset opacity
-    // --- FIX END: Proper modal close ---
-  }
-};
+
 
 function setupProductView() {
   let currentPage = 1; // Current page for product pagination
@@ -1117,23 +1141,26 @@ function setupProductView() {
   }
 
   // Initial population for Products tab
-  async function renderProducts() {
-    allProducts = await window.api.getProducts();
+  async function renderProducts(products) {
+    console.log('[Products] renderProducts() called');
+    // why: Use passed-in list to prevent race conditions; only fetch if no list is provided.
+    allProducts = (typeof products !== 'undefined' && products !== null) ? products : await window.api.getProducts();
+    
+    console.log(`[Products] using list with ${allProducts.length} items`);
     populateCategoryDropdown(allProducts, document.getElementById("filterCategory"));
     await updateProductFilterSubCategoryDropdown(document.getElementById("filterCategory").value);
     applyProductFilters();
   }
+  window.renderProducts = renderProducts;
 
   function displayFilteredProducts(products, page, perPage) {
     const productTable = document.getElementById("productTable");
-    console.time("DOM_rendering_loop");
-
     const startIndex = (page - 1) * perPage;
     const endIndex = startIndex + perPage;
     const paginatedProducts = products.slice(startIndex, endIndex);
 
     productTable.innerHTML = paginatedProducts.map(p => `
-      <tr>
+      <tr data-product-id="${p.id}">
         <td class="p-2">${p.name}</td>
         <td class="p-2">${p.category || ''}</td>
         <td class="p-2">${p.sub_category || ''}</td>
@@ -1144,69 +1171,67 @@ function setupProductView() {
         <td class="p-2">${p.stock}</td>
         <td class="p-2 space-x-2">
           <button class="text-blue-600" onclick="editProduct(${p.id})">✏️</button>
-          <button class="text-red-600" onclick="deleteProduct(${p.id})">🗑️</button>
+          <button class="text-red-600 delete-product-btn" data-id="${p.id}">🗑️</button> <!-- why: Use data-id for reliable ID retrieval -->
           <button class="text-green-600" onclick="showPrintLabelModal(${p.id})">️ Print Label</button>
         </td>
       </tr>
     `).join("");
-    console.timeEnd("DOM_rendering_loop");
 
     const totalPages = Math.ceil(products.length / perPage);
     renderPaginationControls(totalPages, page);
   }
-  function renderPaginationControls(totalPages) {
+
+  function renderPaginationControls(totalPages, page) {
     const paginationContainer = document.getElementById('productPaginationControls');
-    if (!paginationContainer) {
-      // Add a div for pagination controls if it doesn't exist
-      const productListDiv = document.querySelector('#app > div > div:nth-child(1)'); // Assuming this is the parent of the table
-      if (productListDiv) {
-        const newPaginationDiv = document.createElement('div');
-        newPaginationDiv.id = 'productPaginationControls';
-        newPaginationDiv.className = 'flex justify-center items-center space-x-2 mt-4';
-        productListDiv.appendChild(newPaginationDiv);
-      } else {
-        console.error("Could not find a suitable parent for pagination controls.");
-        return;
-      }
-    }
+    if (!paginationContainer) return;
 
     paginationContainer.innerHTML = `
-      <button id="prevPageBtn" class="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300 ${currentPage === 1 ? 'opacity-50 cursor-not-allowed' : ''}" ${currentPage === 1 ? 'disabled' : ''}>Previous</button>
-      <span class="text-sm">Page ${currentPage} of ${totalPages}</span>
-      <button id="nextPageBtn" class="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300 ${currentPage === totalPages ? 'opacity-50 cursor-not-allowed' : ''}" ${currentPage === totalPages ? 'disabled' : ''}>Next</button>
+      <button id="prevPageBtn" class="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300 ${page === 1 ? 'opacity-50 cursor-not-allowed' : ''}" ${page === 1 ? 'disabled' : ''}>Previous</button>
+      <span class="text-sm">Page ${page} of ${totalPages}</span>
+      <button id="nextPageBtn" class="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300 ${page === totalPages ? 'opacity-50 cursor-not-allowed' : ''}" ${page === totalPages ? 'disabled' : ''}>Next</button>
     `;
 
     document.getElementById('prevPageBtn').onclick = () => {
       if (currentPage > 1) {
         currentPage--;
-        console.log("Page:", currentPage, "/", totalPages);
-        applyProductFilters(); // Re-apply filters with new page
+        applyProductFilters();
       }
     };
 
     document.getElementById('nextPageBtn').onclick = () => {
       if (currentPage < totalPages) {
         currentPage++;
-        console.log("Page:", currentPage, "/", totalPages);
-        applyProductFilters(); // Re-apply filters with new page
+        applyProductFilters();
       }
     };
   }
 
   window.deleteProduct = async function(id) {
-  const confirmed = confirm("Are you sure you want to delete?");
-  if (!confirmed) return;
+    const confirmed = confirm("Are you sure you want to delete?");
+    if (!confirmed) return;
 
-  const result = await window.api.deleteProduct(id);
-  if (result.success) {
-    showToast("🗑️ Product deleted");
-    renderProducts(); // ✅ This is the fix: force live refresh
-  } else {
-    showToast("❌ Delete failed");
+    // why: Pass ID as an object to match the expected IPC payload.
+    const result = await window.api.deleteProduct({ id });
+    if (result.success && result.changes > 0) {
+      showToast("🗑️ Product deleted");
+      // Refetch the entire list to ensure UI is consistent.
+      const freshProducts = await window.api.getProducts();
+      productCache = freshProducts;
+      await renderProducts(freshProducts);
+    } else {
+      showToast("❌ Delete failed. The product may have already been removed.", 'error');
+    }
   }
-}
 
-  renderProducts();
+  // Delegated listener for delete buttons
+  productTable.addEventListener('click', (e) => {
+    if (e.target.classList.contains('delete-product-btn')) {
+      const id = e.target.getAttribute('data-id');
+      if (id) {
+        deleteProduct(Number(id));
+      }
+    }
+  });
 
   document.getElementById("searchInput").addEventListener("input", applyProductFilters);
   document.getElementById("filterCategory").addEventListener("change", async (e) => {
@@ -1319,12 +1344,12 @@ function setupProductView() {
     subCategoryInput.value = ""; // Also clear sub-category selection
     
     modalTitle.textContent = "Add Product";
-    modal.classList.remove("hidden");
+    setOverlayVisible('productModal', true);
     if (fixedCart) fixedCart.style.display = "none";
   });
 
   cancelBtn.addEventListener("click", () => {
-    modal.classList.add("hidden");
+    setOverlayVisible('productModal', false);
     if (fixedCart) fixedCart.style.display = "block";
   });
 
@@ -1376,11 +1401,36 @@ function setupProductView() {
 
     if (result.success) {
       showToast(editingProductId ? "✏️ Product updated!" : "✅ Product added!");
-      modal.classList.add("hidden");
+
+      try {
+        // why: To prevent the new item from being hidden, reset filters and pagination.
+        document.getElementById('searchInput').value = '';
+        document.getElementById('filterCategory').value = '';
+        document.getElementById('filterSubCategory').value = '';
+        document.getElementById('filterSubCategory').disabled = true;
+        currentPage = 1;
+
+        productCache = null;
+
+
+        const fresh = await window.api.getProducts();
+
+        window.allProducts = Array.isArray(fresh) ? fresh : [];
+        window.productsLoaded = true;
+        productCache = window.allProducts;
+
+        if (typeof window.renderProducts === 'function' && window.currentTab === 'Products') {
+          await window.renderProducts(fresh);
+        }
+
+      } catch (e) {
+        console.warn('refresh Products failed', e);
+      }
+
+      setOverlayVisible('productModal', false);
       if (fixedCart) fixedCart.style.display = "block";
-      renderProducts();
     } else {
-      showToast("❌ Failed to save product.");
+      showToast("❌ Failed to save product.", 'error');
     }
   });
 
@@ -1469,40 +1519,44 @@ async function updateSalesSubCategoryDropdown(selectedCategory) {
   const dropdown = document.getElementById("salesFilterSubCategory");
   if (!dropdown) return;
 
-  if (selectedCategory) {
-    const subCategories = await window.api.getUniqueSubCategories(selectedCategory);
-    dropdown.innerHTML = `<option value="">All</option>`;
-    subCategories.forEach(sub => {
-      const opt = document.createElement("option");
-      opt.value = sub;
-      opt.textContent = sub;
-      dropdown.appendChild(opt);
-    });
-    dropdown.disabled = false;
-  } else {
+  // why: Prevent IPC spam when no category is selected during view rendering.
+  if (!selectedCategory) {
     dropdown.innerHTML = `<option value="">All</option>`;
     dropdown.disabled = true;
+    return;
   }
+
+  const subCategories = await window.api.getUniqueSubCategories(selectedCategory);
+  dropdown.innerHTML = `<option value="">All</option>`;
+  subCategories.forEach(sub => {
+    const opt = document.createElement("option");
+    opt.value = sub;
+    opt.textContent = sub;
+    dropdown.appendChild(opt);
+  });
+  dropdown.disabled = false;
 }
 
 async function updateProductFilterSubCategoryDropdown(selectedCategory) {
   const dropdown = document.getElementById("filterSubCategory");
   if (!dropdown) return;
 
-  if (selectedCategory) {
-    const subCategories = await window.api.getUniqueSubCategories(selectedCategory);
-    dropdown.innerHTML = `<option value="">All Sub Categories</option>`;
-    subCategories.forEach(sub => {
-      const opt = document.createElement("option");
-      opt.value = sub;
-      opt.textContent = sub;
-      dropdown.appendChild(opt);
-    });
-    dropdown.disabled = false;
-  } else {
+  // why: Prevent IPC spam when no category is selected during view rendering.
+  if (!selectedCategory) {
     dropdown.innerHTML = `<option value="">All Sub Categories</option>`;
     dropdown.disabled = true;
+    return;
   }
+
+  const subCategories = await window.api.getUniqueSubCategories(selectedCategory);
+  dropdown.innerHTML = `<option value="">All Sub Categories</option>`;
+  subCategories.forEach(sub => {
+    const opt = document.createElement("option");
+    opt.value = sub;
+    opt.textContent = sub;
+    dropdown.appendChild(opt);
+  });
+  dropdown.disabled = false;
 }
 
 async function updateProductModalSubCategoryDropdown(category) {
@@ -1665,6 +1719,16 @@ async function populateInvoiceModal(cartItems, invoiceNo, isQuotation = false) {
 
 async function renderView(viewName) {
   currentTab = viewName; // Update currentTab on view change
+
+  // Force-hide all known modals/overlays to prevent event blocking on tab switch
+  ['productModal', 'printLabelModal', 'cartOverlay', 'invoice-modal'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.classList.add('hidden');
+      el.style.pointerEvents = 'none';
+    }
+  });
+
   app.innerHTML = views[viewName] || `<p>Unknown view: ${viewName}</p>`;
 
   document.querySelectorAll(".nav-btn").forEach((btn) => {
@@ -1692,6 +1756,9 @@ async function renderView(viewName) {
     productsLoaded = true;
     currentPage = 1; // Reset to first page on tab switch
     await setupProductView();
+    if (typeof window.renderProducts === 'function') {
+      window.renderProducts();
+    }
     performance.mark('renderView_Products_end');
     performance.measure('renderView_Products_duration', 'renderView_Products_start', 'renderView_Products_end');
   }
@@ -1781,7 +1848,7 @@ async function renderView(viewName) {
       checkoutBtn.addEventListener("click", () => {
         const cartOverlay = document.getElementById("cartOverlay");
         if (cartOverlay) {
-          cartOverlay.classList.remove("hidden");
+          setOverlayVisible('cartOverlay', true);
           renderCartOverlay();
         } else {
           completeSaleAndPrint();
@@ -1847,7 +1914,6 @@ if (viewName === "Settings") {
     document.getElementById("storePhoneInput").value = data.store_phone || "";
     document.getElementById("storeGstinInput").value = data.store_gstin || "";
     document.getElementById("storeFooterInput").value = data.store_footer || "";
-    document.getElementById("labelPrinterNameInput").value = data.label_printer_name || "";
   });
 
   const form = document.getElementById("store-profile-form");
@@ -1860,7 +1926,6 @@ if (viewName === "Settings") {
       store_phone: document.getElementById("storePhoneInput").value.trim(),
       store_gstin: document.getElementById("storeGstinInput").value.trim(),
       store_footer: document.getElementById("storeFooterInput").value.trim(),
-      label_printer_name: document.getElementById("labelPrinterNameInput").value.trim(),
     };
 
     if (!payload.store_name || !payload.store_address || !payload.store_phone) {
@@ -1869,7 +1934,18 @@ if (viewName === "Settings") {
     }
 
     window.api.saveStoreSettings(payload)
-      .then(() => showToast("✅ Business profile saved!"))
+      .then(() => {
+        showToast("✅ Business profile saved!");
+        window.api.getStoreSettings().then(data => {
+          if (!data) return;
+          document.getElementById("storeNameInput").value = data.store_name || "";
+          document.getElementById("storeSubtitleInput").value = data.store_subtitle || "";
+          document.getElementById("storeAddressInput").value = data.store_address || "";
+          document.getElementById("storePhoneInput").value = data.store_phone || "";
+          document.getElementById("storeGstinInput").value = data.store_gstin || "";
+          document.getElementById("storeFooterInput").value = data.store_footer || "";
+        });
+      })
       .catch(() => showToast("❌ Failed to save. Try again."));
   });
 
@@ -2013,14 +2089,18 @@ if (viewName === "Settings") {
       const confirmed = confirm("Are you sure you want to regenerate all barcodes? This cannot be undone.");
       if(confirmed) {
         const result = await window.api.regenerateBarcodes();
-        if(result.success) {
-          showToast("✅ Barcodes regenerated successfully.");
-          productCache = null;
-          allProducts = await window.api.getProducts();
-          renderProducts();
-        } else {
-          showToast("❌ Barcode regeneration failed.");
-        }
+if(result.success) {
+  showToast("✅ Barcodes regenerated successfully.");
+  productCache = null;
+  allProducts = await window.api.getProducts();
+
+  // Refresh the Products table only if that tab is visible
+  if (typeof window.renderProducts === 'function' && window.currentTab === 'Products') {
+    window.renderProducts();
+  }
+} else {
+  showToast("❌ Barcode regeneration failed.");
+}
       }
     });
   }
@@ -2033,7 +2113,7 @@ if (viewName === "Settings") {
         showToast("❌ Please enter a valid product ID.");
         return;
       }
-      const product = await window.api.getProductById(productId);
+      const product = await window.api.getProductById(idNum);
       if(product) {
         console.log(`Product ${productId} barcode:`, product.barcode_value);
         showToast(`Product ${productId} barcode: ${product.barcode_value}`);
@@ -2257,7 +2337,7 @@ async function renderCartOverlay() {
           // 2. Hide the cart overlay
           const cartOverlay = document.getElementById("cartOverlay");
           if (cartOverlay) {
-              cartOverlay.classList.add("hidden");
+              setOverlayVisible('cartOverlay', false);
           }
 
           // 3. Navigate back to Dashboard
@@ -2268,7 +2348,9 @@ async function renderCartOverlay() {
           if (invoiceModal) {
               // Populate the invoice modal with the last sale data
               populateInvoiceModal(lastSale, activeInvoiceNo);
-              invoiceModal.classList.remove('hidden');
+              setOverlayVisible('invoice-modal', true);
+              invoiceModal.style.display = 'flex';
+              invoiceModal.style.zIndex = '100';
 
               // 5. Allow the user to close the preview early with the Close button
               const closeInvoiceBtn = document.getElementById('close-invoice-btn');
@@ -2281,7 +2363,7 @@ async function renderCartOverlay() {
                       closeInvoiceBtn.removeEventListener('click', existingListener);
                   }
                   const newListener = () => {
-                      invoiceModal.classList.add('hidden');
+                      setOverlayVisible('invoice-modal', false);
                       clearTimeout(autoCloseTimeout); // Clear auto-close timeout if closed manually
                   };
                   newListener._isGeminiAdded = true; // Mark the listener
@@ -2291,7 +2373,7 @@ async function renderCartOverlay() {
               // 6. Auto-close the invoice preview modal after 3 seconds
               autoCloseTimeout = setTimeout(() => {
                   if (invoiceModal && !invoiceModal.classList.contains('hidden')) {
-                      invoiceModal.classList.add('hidden');
+                      setOverlayVisible('invoice-modal', false);
                   }
               }, 3000);
           }
@@ -2444,7 +2526,16 @@ if (previewBtn) {
         return;
       }
       populateInvoiceModal([...cart], activeInvoiceNo || Date.now());
-      document.getElementById('invoice-modal').classList.remove('hidden');
+      const invoiceModal = document.getElementById('invoice-modal');
+      const cartOverlay = document.getElementById('cartOverlay');
+      if (invoiceModal) {
+        setOverlayVisible('invoice-modal', true);
+        invoiceModal.style.display = 'flex';
+        invoiceModal.style.zIndex = '2000';
+        if (cartOverlay) {
+            cartOverlay.style.pointerEvents = 'none';
+        }
+      }
     } catch (err) {
       console.error('Error rendering invoice preview:', err);
       showToast("❌ Error generating preview.");
@@ -2794,7 +2885,7 @@ window.updateCartItem = async function (id, field, value) {
     if (productIdInput) productIdInput.value = product.product_id || "";
     
     modalTitle.textContent = "Edit Product";
-    modal.classList.remove("hidden");
+    setOverlayVisible('productModal', true);
     nameInput.focus();
   };
 
@@ -2809,26 +2900,38 @@ document.querySelectorAll(".nav-btn").forEach((btn) => {
   await renderView("Dashboard"); // Initial load
 
   window.showPrintLabelModal = async function(productId) {
-  const modal = document.getElementById('printLabelModal');
-  const product = await window.api.getProductById(productId);
+  const idNum = Number.parseInt(productId, 10);
+  if (!Number.isFinite(idNum)) {
+    console.error('[PRINT] showPrintLabelModal invalid productId:', productId);
+    showToast("❌ Can't open label dialog: invalid product id.", "error");
+    return;
+  }
 
+  const modal = document.getElementById('printLabelModal');
+  if (!modal) {
+    console.error('[PRINT] printLabelModal element not found');
+    showToast("❌ Print dialog missing in DOM.", "error");
+    return;
+  }
+
+  const product = await window.api.getProductById(idNum);
   if (!product) {
     showToast("❌ Product not found.", "error");
     return;
   }
 
-  // Store the product ID on the modal dataset for the new delegated handler to use
-  modal.dataset.productId = product.id;
+  // Save the numeric id on the modal dataset
+  modal.dataset.productId = String(product.id);
   console.log(`[DEBUG PRINT] showPrintLabelModal setting productId: ${modal.dataset.productId}`);
 
   const storeSettings = await window.api.getStoreSettings();
-
-  document.getElementById("label-store-name").textContent = storeSettings.store_name || "";
+  document.getElementById("label-store-name").textContent = storeSettings?.store_name || "";
   document.getElementById("label-product-name").textContent = product.name;
   document.getElementById("label-mrp").textContent = `MRP: ₹${product.price}`;
   document.getElementById("label-stock-ref").textContent = `(In Stock: ${product.stock})`;
   document.getElementById("label-quantity").value = 1;
 
+  // Preview barcode in the modal
   const canvas = document.getElementById("label-barcode");
   try {
     bwipjs.toCanvas(canvas, {
@@ -2846,112 +2949,149 @@ document.querySelectorAll(".nav-btn").forEach((btn) => {
     ctx.fillText('Error generating barcode', 10, 20);
   }
 
-  // Show the modal. The new delegated listener on document.body will handle the clicks.
-  modal.classList.remove('hidden');
+  setOverlayVisible('printLabelModal', true);
 };
-
 async function printLabel(productId) {
-  console.log(`[DEBUG PRINT] printLabel function entered with productId: ${productId}`);
-  const product = await window.api.getProductById(productId);
-  if (!product) {
-    console.log('[DEBUG PRINT] Exit: Product not found after fetching with ID.');
-    showToast("❌ Could not find product to print.", "error");
-    return;
-  }
+  const idNum = Number.parseInt(productId, 10);
+  if (!Number.isFinite(idNum)) { showToast('❌ Cannot print: invalid product id.', 'error'); return; }
 
-  const quantity = parseInt(document.getElementById('label-quantity').value, 10);
-  const labelSize = document.getElementById('label-size').value;
-  console.log(`[DEBUG PRINT] Retrieved from DOM - quantity: ${quantity}, labelSize: '${labelSize}'`);
+    const quantity = parseInt(document.getElementById('label-quantity').value) || 1;
+    const size = document.getElementById('label-size').value.split('x');
+    const widthMm = parseInt(size[0]);
+    const heightMm = parseInt(size[1]);
 
-  const [widthMm, heightMm] = labelSize.split('x').map(Number);
-  console.log(`[DEBUG PRINT] Parsed dimensions - widthMm: ${widthMm}, heightMm: ${heightMm}`);
+    // === BEGIN FIX: consistent effective height to prevent extra feed ===
+    const SHRINK_MM = 2; // If still feeds, try 2.5; if content too tight, try 1
+    const effectiveHeightMm = heightMm - SHRINK_MM;
+    const pageWidthMicrons  = widthMm * 1000;
+    const pageHeightMicrons = effectiveHeightMm * 1000;
+    // === END FIX ===
 
-  console.log('[DEBUG PRINT] Validating quantity...');
-  if (isNaN(quantity) || quantity <= 0) {
-    console.log('[DEBUG PRINT] Exit: Quantity validation FAILED.');
-    showToast("❌ Please enter a valid quantity.", "error");
-    return;
-  }
-  console.log('[DEBUG PRINT] Quantity validation PASSED.');
+    // === BEGIN: content offset (do not change anything above/below except where told) ===
+    const CONTENT_TOP_OFFSET_MM = 2; // move the whole label content down by 2mm
+    // === END: content offset ===
 
-  const storeSettings = await window.api.getStoreSettings();
+    const product = await window.api.getProductById(idNum);
+    if (!product) {
+        showToast('Cannot print label: Product not found.', 'error');
+        return;
+    }
 
-  const canvas = document.createElement('canvas');
-  let barcodeBase64 = '';
-  try {
-    bwipjs.toCanvas(canvas, {
-      bcid: 'code128',
-      text: product.barcode_value || product.product_id,
-      scale: 3,
-      includetext: true,
-    });
-    barcodeBase64 = canvas.toDataURL('image/png').split(',')[1];
-    console.log(`[DEBUG PRINT] Barcode generated successfully as PNG data URL.`);
-  } catch (e) {
-    console.log('[DEBUG PRINT] Exit: Barcode generation FAILED.');
-    console.error('Failed to generate barcode for printing:', e);
-    showToast('❌ Error creating barcode for print.', 'error');
-    return;
-  }
+    const storeSettings = await window.api.getStoreSettings();
+    const barcodeValue = product.barcode_value || product.product_id;
 
-  const labelHtml = `
-    <html>
-      <head>
-        <style>
-          body { margin:0; padding:0; font-family: Arial, sans-serif; font-size:10pt; }
-          .store-name { font-size:11pt; font-weight:bold; text-align:center; margin-bottom:1mm; }
-          .product-name { font-size:10pt; text-align:center; margin-bottom:1mm; }
-          .barcode { text-align:center; margin:1mm 0; }
-          .mrp { font-size:10pt; text-align:center; font-weight:bold; }
-		  @page { margin: 0; size: ${widthMm}mm ${heightMm}mm; }
-          body {
-            margin: 0;
-            padding: 0;
-            font-family: Arial, sans-serif;
-            font-size: 8pt;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            text-align: center;
-            width: ${widthMm}mm;
-            height: ${heightMm}mm;
-            overflow: hidden;
-            box-sizing: border-box;
-            transform: translate(-9mm, -1mm);
-          }
-        </style>
-      </head>
-      <body>
-        <div class="store-name">${storeSettings.store_name || ''}</div>
-        <div class="product-name">${product.name}</div>
-        <div class="barcode">
-          <img src="data:image/png;base64,${barcodeBase64}" style="width:38mm; height:auto;" />
-        </div>
-        <div class="mrp">MRP: ₹${product.price}</div>
-      </body>
-    </html>
-  `;
+    const canvas = document.createElement('canvas');
+    try {
+        // Generate barcode WITHOUT text. Text will be rendered manually in HTML.
+        bwipjs.toCanvas(canvas, {
+            bcid: 'code128',
+            text: barcodeValue,
+            scale: 3,      // Increased scale for sharpness
+            height: 6,
+            includetext: false, // IMPORTANT: Do not include text in the image
+        });
+    } catch (e) {
+        console.error('Barcode generation failed:', e);
+        showToast('❌ Error creating barcode.', 'error');
+        return;
+    }
 
-  const result = await window.api.printLabel({
-    html: labelHtml,
-    width: widthMm * 1000, // to microns
-    height: heightMm * 1000, // to microns
-    copies: quantity,
-  });
+    const barcodeBase64 = canvas.toDataURL('image/png');
 
-  if (result.success) {
-    showToast(`✅ ${quantity} label(s) sent to printer.`);
-  } else {
-    showToast(`❌ ${result.message}`, 'error');
-  }
+    const labelHtml = `
+      <html>
+        <head>
+          <style>
+            @page { margin: 0; size: ${widthMm}mm ${effectiveHeightMm}mm; } /* exact canvas height */
+            body {
+              margin: 0;
+              padding: 0;
+              font-family: Arial, sans-serif;
+              width: ${widthMm}mm;
+              height: ${effectiveHeightMm}mm;
+              box-sizing: border-box;
+              overflow: hidden;
+
+              /* ✅ Lock X, gently lift Y so first line shows, last line doesn't clip */
+              position: relative;
+              left: -7mm;     /* X locked (your sweet spot) */
+              top:  -0.4mm;     /* subtle lift; avoids clipping store name */
+              transform: none;
+            }
+            .label-container {
+              padding-top: 0mm;  /* tiny cushion for the store name */
+              box-sizing: border-box;
+              text-align: center;
+            }
+            .store-name { 
+              font-size: 7pt; 
+              font-weight: bold; 
+              line-height: 1; 
+              margin: 0; 
+            }
+            .product-name {
+              font-size: 6.5pt;
+              line-height: 1;
+              margin-top: 0.3mm;
+              white-space: nowrap;
+              overflow: hidden;
+              text-overflow: ellipsis;
+              text-align: center;
+              padding: 0 1.5mm;
+              box-sizing: border-box;
+              max-width: 100%;
+              direction: ltr;
+            }
+            .barcode-img {
+              width: 32mm;
+              height: 5mm;
+              margin-top: 0.2mm;   /* shave a bit to keep bottom tight */
+              margin-left: 0mm;
+            }
+            .barcode-text { 
+              font-size: 6pt; 
+              line-height: 1; 
+              margin: 0; 
+            }
+            .mrp { 
+              font-size: 7pt; 
+              font-weight: bold; 
+              line-height: 1; 
+              margin: 0; 
+              margin-top: 0.2mm;   /* tighter stack so no bottom tail */
+            }
+          </style>
+        </head>
+        <body>
+          <div class="label-container">
+            <div class="store-name">${storeSettings?.store_name || 'My Store'}</div>
+            <div class="product-name">${product.name}</div>
+            <img class="barcode-img" src="${barcodeBase64}" />
+            <div class="barcode-text">${barcodeValue}</div>
+            <div class="mrp">MRP: ₹${product.price}</div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    for (let i = 0; i < quantity; i++) {
+        const result = await window.api.printLabel({
+            html: labelHtml,
+            width: pageWidthMicrons,
+            height: pageHeightMicrons,
+        });
+
+        if (result.success) {
+            showToast(`✅ Label ${i + 1}/${quantity} sent to printer.`);
+        } else {
+            showToast(`❌ Print failed: ${result.message}`, 'error');
+            break;
+        }
+    }
 }
 });
 
-// 🧾 Invoice print layout support
-document.getElementById("close-invoice-btn").addEventListener("click", () => {
-  document.getElementById("invoice-modal").classList.add("hidden");
-});
+
 function applyGlobalDiscount(type, value) {
   if (!cart.length) return;
 
@@ -2976,14 +3116,7 @@ function applyGlobalDiscount(type, value) {
   renderCartOverlay();  // ✅ triggers live update
   // 🧾 Wire Preview Invoice button inside
 }
-function showToast(message) {
-  const toast = document.getElementById("toast");
-  if (!toast) return;
-  toast.textContent = message;
-  toast.classList.remove("hidden");
-  setTimeout(() => toast.classList.add("hidden"), 2000);
-}
-
+// (removed legacy showToast to avoid shadowing the global toast)
 // Ensure window.removeItem is defined and works
 if (!window.removeItem) {
   window.removeItem = function(id) {
@@ -3005,7 +3138,9 @@ if (!window.deleteProduct) {
         const result = await window.api.deleteProduct(id);
         if (result.success) {
           showToast("🗑️ Product deleted!");
-          renderProducts();
+if (typeof window.renderProducts === 'function' && window.currentTab === 'Products') {
+  window.renderProducts();
+}
         } else {
           showToast("❌ Failed to delete product.");
         }
@@ -3153,20 +3288,25 @@ async function populateInvoiceModal(items = [], invoiceNo = '0000') {
     `;
   }
 
-  const modal = document.getElementById('invoice-modal');
-  // DEBUG: Check if modal element is found
-  console.log('DEBUG-INVOICE-MODAL: Inside populateInvoiceModal - modal element:', modal);
-  if (modal) {
-    // DEBUG: Before removing hidden class and adding flex
-    console.log('DEBUG-INVOICE-MODAL: Inside populateInvoiceModal - Removing "hidden" class and adding "flex".');
-    modal.classList.remove('hidden');
-    modal.classList.add('flex'); // Add flex to make it visible and use flexbox
-    // DEBUG: After removing hidden class and adding flex
-    console.log('DEBUG-INVOICE-MODAL: Inside populateInvoiceModal - Classes updated. Current classList:', modal.classList.value);
-    console.log('DEBUG-INVOICE-MODAL: Modal shown successfully. Display style:', modal.style.display); // This will likely be empty as Tailwind sets it via class
-  } else {
-    console.log('DEBUG-INVOICE-MODAL: Inside populateInvoiceModal - Modal element not found!');
-  }
   await new Promise(resolve => requestAnimationFrame(resolve));
 }
 
+
+// --- Guard: ensure invoice modal is clickable when visible (auto-fix pointer-events) ---
+(function(){
+  try {
+    var m = document.getElementById('invoice-modal');
+    if (!m) return;
+    function shown(el){
+      return !el.classList.contains('hidden') || (el.style && el.style.display && el.style.display !== 'none');
+    }
+    function sync(){
+      var vis = shown(m);
+      m.style.pointerEvents = vis ? 'auto' : 'none';
+      if (vis) m.style.zIndex = '2147483640';
+    }
+    // initial + react to class/style changes
+    sync();
+    new MutationObserver(sync).observe(m, { attributes: true, attributeFilter: ['class','style'] });
+  } catch (e) { console.warn('invoice-modal guard error:', e); }
+})();

