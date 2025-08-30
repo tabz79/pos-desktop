@@ -1,0 +1,20 @@
+# dependencies
+node_modules/
+
+# build artifacts
+dist/
+*.exe
+*.blockmap
+*.asar
+
+# DB files
+*.db
+*.db-shm
+*.db-wal
+pos.db
+
+# misc
+styles/output.css
+.DS_Store
+Thumbs.db
+.env

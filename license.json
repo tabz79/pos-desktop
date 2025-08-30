@@ -1,0 +1,10 @@
+{
+  "payload": {
+    "deviceId": "dff0c104cfb3b80716d85d266068ba211a76cf3d459138010033c1c70a883805",
+    "customer": "New Asian Sports",
+    "plan": "lifetime",
+    "exp": 0,
+    "issuedAt": 1756180597620
+  },
+  "signature": "MEUCIQDmCafgLwRBNZ19RBKyuoVu599q2UWR7yglKFT/SPzajwIgMSB42LB5loKd66SClt7CkV6DF7BfXH66twP0XjtoSsE="
+}

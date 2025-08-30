@@ -1,0 +1,94 @@
+{
+  "name": "pos-desktop",
+  "version": "1.0.4",
+  "description": "SlipKit POS desktop application",
+  "main": "main.js",
+  "productName": "SlipKit POS Suite",
+  "author": "",
+  "license": "ISC",
+  "scripts": {
+    "start": "npx electron .",
+    "dev": "tailwindcss -i styles/input.css -o styles/output.css --watch",
+    "dist": "electron-builder --win",
+    "dist:win": "electron-builder --win --x64",
+    "postinstall": "electron-builder install-app-deps",
+    "make-icon": "magick build/icon.png -define icon:auto-resize=256,128,64,48,32,16 build/icon.ico",
+    "license:gen": "node tools/license-gen.js"
+  },
+  "keywords": [],
+  "dependencies": {
+    "@node-escpos/core": "^0.6.0",
+    "@node-escpos/usb-adapter": "^0.3.1",
+    "better-sqlite3": "^11.10.0",
+    "bwip-js": "^4.7.0",
+    "electron-updater": "^6.6.2",
+    "exceljs": "^4.4.0",
+    "node-machine-id": "^1.1.12"
+  },
+  "devDependencies": {
+    "autoprefixer": "^10.4.21",
+    "electron": "^37.2.0",
+    "electron-builder": "^26.0.12",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^4.1.11"
+  },
+  "build": {
+    "appId": "com.slipkit.pos",
+    "productName": "SlipKit POS Suite",
+    "directories": {
+      "buildResources": "build",
+      "output": "dist"
+    },
+    "files": [
+      "package.json",
+      "main.js",
+      "renderer.js",
+      "barcode-scanner.js",
+      "quotation-bridge.js",
+      "preload.js",
+      "index.html",
+      "activation.html",
+      "db.js",
+      "db-path.js",
+      "printer.js",
+      "labelTemplate.js",
+      "category-hsn-map.json",
+      "styles/**",
+      "assets/**",
+      "node_modules/**",
+      "!**/*.map",
+      "!dist/**",
+      "!tmp/**",
+      "!**/.git/**",
+      "!**/.vscode/**",
+      "!**/tests/**"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "artifactName": "${productName}-${version}-Setup-x64.${ext}",
+      "icon": "assets/icons/win/icon.ico"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": false,
+      "runAfterFinish": true,
+      "shortcutName": "SlipKit POS Suite",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "installerIcon": "assets/icons/win/icon.ico",
+      "uninstallerIcon": "assets/icons/win/icon.ico",
+      "installerHeaderIcon": "assets/icons/win/icon.ico"
+    },
+    "mac": {
+      "icon": "build/icon.png"
+    },
+    "linux": {
+      "icon": "build/icon.png"
+    },
+    "compression": "maximum"
+  }
+}
