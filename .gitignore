@@ -1,0 +1,16 @@
+node_modules/
+pos.db
+styles/output.css
+.DS_Store
+.env
+inv-80mm.jpg
+SFT103.png
+tailwindcss.exe
+vendor_private_key.pem
+tools/private-key.pem
+license.json
+/dist/
+*.exe
+*.blockmap
+*.asar
+*.db
